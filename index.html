@@ -11,8 +11,13 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
-body{font-family:'DM Sans',sans-serif;background:#F1F5F9;max-width:430px;margin:0 auto;min-height:100vh;}
+body{font-family:'DM Sans',sans-serif;background:#F1F5F9;min-height:100vh;}
 input,button,select,textarea{font-family:'DM Sans',sans-serif;}
+@media(min-width:768px){
+  #root{max-width:900px;margin:0 auto;}
+  body{background:#E2E8F0;}
+  #root{background:#F1F5F9;box-shadow:0 0 40px rgba(0,0,0,0.12);min-height:100vh;}
+}
 button:active{opacity:0.85;transform:scale(0.98);}
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
@@ -267,7 +272,7 @@ function renderNav(alertas){
     {id:"cobros",i:"💰",l:"Cobros"},
     {id:"mas",i:"☰",l:"Más"},
   ];
-  return'<div style="position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:430px;background:'+W+';border-top:1px solid #E2E8F0;display:flex;z-index:100;padding-bottom:8px;box-shadow:0 -4px 20px rgba(0,0,0,0.08);">'+
+  return'<div style="position:fixed;bottom:0;left:0;right:0;width:100%;max-width:900px;margin:0 auto;background:'+W+';border-top:1px solid #E2E8F0;display:flex;z-index:100;padding-bottom:8px;box-shadow:0 -4px 20px rgba(0,0,0,0.08);">'+
   items.map(function(item){
     var active=ST.tab===item.id;
     var badge=item.id==="panel"&&alertas>0;
