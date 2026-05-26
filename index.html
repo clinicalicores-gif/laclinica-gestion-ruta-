@@ -461,7 +461,7 @@ function renderMas(){
   return pageHeader("☰ Más opciones","#1A3A5C","")+
   '<div style="padding:16px;display:grid;grid-template-columns:1fr 1fr;gap:12px;">'+
   mods.map(function(m){
-    var fn=m.modal?"setState({modal:{tipo:'"+m.modal+"'}})":(m.t?"setState({tab:'"+m.t+"'})"):"";
+    var fn=m.modal?"setState({modal:{tipo:'"+m.modal+"'}})":(m.t?"setState({tab:'"+m.t+"'})"):"");
     return'<button onclick="'+fn+'" style="background:'+m.c+';border:none;border-radius:18px;padding:20px 14px;display:flex;flex-direction:column;align-items:flex-start;gap:8px;cursor:pointer;width:100%;"><span style="font-size:28px;">'+m.i+'</span><span style="color:'+W+';font-size:15px;font-weight:700;text-align:left;line-height:1.2;">'+m.l+'</span></button>';
   }).join("")+
   '</div>';
