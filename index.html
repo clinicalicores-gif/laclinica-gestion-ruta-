@@ -835,27 +835,29 @@ function modalEditarCliente(c){if(!c)return"";return ov(mh("✏️ Editar: "+h(c
 function modalVerCliente(c){if(!c)return"";var ps=ST.pedidos.filter(function(p){return p.cliente===c.nombre;});var cs=ST.cobros.filter(function(co){return co.cliente===c.nombre;});return ov(mh("👁️ "+h(c.nombre||""))+'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px;">'+[["Encargado",c.encargado],["Teléfono",c.tel],["Zona",c.zona],["Precio","Tipo "+(c.precio||"C")],["Días sin visita",(c.dias||0)+"d"],["Origen",c.origen||"Ecuador"]].map(function(f){return'<div style="background:'+S+';border-radius:12px;padding:12px;"><p style="font-size:12px;color:#64748B;margin:0 0 4px;">'+f[0]+'</p><p style="font-size:14px;font-weight:600;color:'+N+';margin:0;">'+h(String(f[1]||""))+'</p></div>';}).join("")+'</div><h3 style="font-size:15px;font-weight:700;color:'+N+';margin:0 0 10px;">Pedidos ('+ps.length+')</h3>'+ps.slice(0,3).map(function(p){return'<div style="background:'+S+';border-radius:10px;padding:10px 12px;margin-bottom:6px;display:flex;justify-content:space-between;"><span style="font-size:13px;color:'+N+';">'+h(p.fecha||"")+"</span><strong>$"+(p.monto||0)+'</strong></div>';}).join("")+'<div style="display:flex;gap:10px;margin-top:16px;"><button onclick="abrirWA(\''+h(c.tel||"")+'\',\'saludo\',\''+h(c.nombre||"")+'\')" style="flex:1;background:#075E54;border:none;border-radius:14px;padding:14px;font-size:15px;font-weight:700;color:'+W+';cursor:pointer;">💬 WA</button><button onclick="setState({modal:{tipo:\'editarCliente\',cliente:'+JSON.stringify({id:c.id,nombre:c.nombre,encargado:c.encargado,tel:c.tel,zona:c.zona,dia:c.dia,aniversario:c.aniversario,precio:c.precio,origen:c.origen,estado:c.estado}).replace(/"/g,"'")+'}}" style="flex:1;background:'+N+';border:none;border-radius:14px;padding:14px;font-size:15px;font-weight:700;color:'+W+';cursor:pointer;">✏️ Editar</button></div>',true);}
 
 function modalNuevoPedido(){
+  setTimeout(function(){
+    var el=document.getElementById("np_sistema");
+    if(el)el.onchange=function(){toggleCamposMixto(this.value);};
+  },50);
   return ov(
     mh("📦 Nuevo Pedido")+
     sel("np_cli","Cliente *",[{v:"",l:"Seleccionar..."}].concat(ST.clientes.map(function(c){return{v:c.nombre,l:c.nombre};})))+
     inp("np_monto","Monto total ($) *","number","0.00","",true)+
     inp("np_fac","N° Factura","text","FAC-001")+
     sel("np_pago","Forma de pago",[{v:"Efectivo",l:"💵 Efectivo"},{v:"Transferencia",l:"📱 Transferencia"},{v:"Credito",l:"📋 Crédito"},{v:"Cheque",l:"📄 Cheque"}])+
-    sel("np_sistema","🧾 Sistema de facturación",[{v:"Perseo",l:"🇪🇨 Perseo — Productos nacionales"},{v:"Importados",l:"🇨🇴 Importados — Colombia / otro sistema"},{v:"Mixto",l:"🔀 Mixto — Tiene de los dos sistemas"}],"","onchange="toggleCamposMixto(this.value)"")+
-    // Campo simple (Perseo o Importados)
+    sel("np_sistema","🧾 Sistema de facturación",[{v:"Perseo",l:"🇪🇨 Perseo — Productos nacionales"},{v:"Importados",l:"🇨🇴 Importados — Colombia / otro sistema"},{v:"Mixto",l:"🔀 Mixto — Tiene de los dos sistemas"}])+
     '<div id="blk_simple">'+inp("np_prod","Productos *","text","Ron Del Rio x5, Pilsener x24","",true)+'</div>'+
-    // Campos dobles para Mixto (oculto por defecto)
     '<div id="blk_mixto" style="display:none;">'+
       '<div style="background:#EFF6FF;border-radius:14px;padding:12px 14px;margin-bottom:12px;">'+
-        '<p style="font-size:12px;font-weight:700;color:#1D4ED8;margin:0 0 8px;">🇪🇨 PERSEO — Productos nacionales (puede ir a crédito)</p>'+
+        '<p style="font-size:12px;font-weight:700;color:#1D4ED8;margin:0 0 8px;">🇪🇨 PERSEO — Nacionales (puede ir a crédito)</p>'+
         inp("np_prod_nac","Productos nacionales","text","Pilsener x24, Zhumir x6")+
       '</div>'+
       '<div style="background:#FEF3C7;border-radius:14px;padding:12px 14px;margin-bottom:12px;">'+
-        '<p style="font-size:12px;font-weight:700;color:#92400E;margin:0 0 8px;">🇨🇴 IMPORTADOS — Colombia (cobrar en efectivo)</p>'+
+        '<p style="font-size:12px;font-weight:700;color:#92400E;margin:0 0 8px;">🇨🇴 IMPORTADOS — Colombia (cobrar efectivo)</p>'+
         inp("np_prod_imp","Productos importados","text","Aguardiente Antioqueño x3")+
       '</div>'+
     '</div>'+
-    '<div style="margin-bottom:16px;"><label style="font-size:14px;font-weight:600;color:'+N+';display:block;margin-bottom:8px;">Notas libres</label><textarea id="np_notas" placeholder="Instrucciones, fecha de entrega, condiciones..." style="width:100%;border:2px solid #E2E8F0;border-radius:12px;padding:14px 16px;font-size:16px;outline:none;resize:none;height:80px;"></textarea></div>'+
+    '<div style="margin-bottom:16px;"><label style="font-size:14px;font-weight:600;color:'+N+';display:block;margin-bottom:8px;">Notas libres</label><textarea id="np_notas" placeholder="Instrucciones..." style="width:100%;border:2px solid #E2E8F0;border-radius:12px;padding:14px 16px;font-size:16px;outline:none;resize:none;height:80px;"></textarea></div>'+
     sbtn("guardarPedido()","✅ Guardar pedido",A)
   );
 }
