@@ -297,7 +297,7 @@ function renderClientes(){
     var f=ST.filtro==="todos"||c.estado===ST.filtro;
     return s&&f;
   });
-  return pageHeader("👥 Clientes ("+ST.clientes.length+")","#1A3A5C",
+  return pageHeader("👥 Clientes ("+ST.clientes.length+")","#1A3A5C","#2E5C8A",
     '<div style="display:flex;gap:8px;">'+
     '<button onclick="exportarClientes()" style="background:rgba(255,255,255,0.15);border:none;border-radius:12px;padding:8px 12px;color:'+W+';font-size:13px;font-weight:600;cursor:pointer;">📤</button>'+
     '<button onclick="setState({modal:{tipo:\'nuevoCliente\'}})" style="background:'+A+';border:none;border-radius:12px;padding:8px 14px;color:'+W+';font-size:13px;font-weight:700;cursor:pointer;">➕ Nuevo</button>'+
@@ -330,6 +330,7 @@ function renderClientes(){
       '<div style="display:flex;justify-content:space-between;align-items:center;padding-top:10px;border-top:1px solid #F1F5F9;">'+
         '<span style="font-size:14px;color:#64748B;">📞 '+h(c.tel||"")+'</span>'+
         '<div style="display:flex;gap:6px;">'+
+          (c.tel?'<a href="https://wa.me/593'+c.tel.replace(/[^0-9]/g,"")+'" target="_blank" style="background:#25D366;border:none;border-radius:10px;padding:6px 10px;text-decoration:none;display:inline-flex;align-items:center;font-size:16px;">💬</a>':"" )+
           '<button onclick="verCliente(\''+c.id+'\')" style="background:'+S+';border:none;border-radius:10px;padding:6px 10px;cursor:pointer;font-size:16px;">👁️</button>'+
           '<button onclick="editarCliente(\''+c.id+'\')" style="background:'+N+';border:none;border-radius:10px;padding:6px 10px;cursor:pointer;font-size:16px;">✏️</button>'+
           '<button onclick="confirmarEliminar(\'clientes\',\''+c.id+'\',\''+h(c.nombre||"")+'\')" style="background:#FFF1F2;border:none;border-radius:10px;padding:6px 10px;cursor:pointer;font-size:16px;">🗑️</button>'+
@@ -362,7 +363,7 @@ function renderPedidos(){
       return'<button onclick="setState({filtroSistema:\''+f.k+'\'})" style="white-space:nowrap;background:'+(act?N:"#E2E8F0")+';color:'+(act?'#fff':'#475569')+';border:none;border-radius:999px;padding:7px 14px;font-size:13px;font-weight:700;cursor:pointer;">'+f.l+'</button>';
     }).join("")+
   '</div>';
-  return pageHeader("📦 Pedidos ("+pedidosFiltrados.length+")","#1A3A5C",
+  return pageHeader("📦 Pedidos ("+pedidosFiltrados.length+")","#1A3A5C","#2E5C8A",
     '<button onclick="setState({modal:{tipo:\'nuevoPedido\'}})" style="background:'+A+';border:none;border-radius:14px;padding:10px 16px;color:#fff;font-size:15px;font-weight:700;cursor:pointer;">➕ Nuevo</button>')+
   filterBar+
   '<div style="padding:0 16px 12px;display:flex;flex-direction:column;gap:10px;">'+
@@ -419,34 +420,135 @@ function renderPedidos(){
 // COBROS
 // ═══════════════════════════════════════════════════════════════
 function renderCobros(){
-  var total=ST.cobros.filter(function(c){return c.estado!=="cobrado";}).reduce(function(a,c){return a+(c.saldo||0);},0);
+  // Cartera = pedidos a crédito pendientes de cobro
+  var pendientes=ST.pedidos.filter(function(p){
+    return p.formaPago==="Credito" && p.estado!=="cancelado" && (p.saldoPendiente===undefined?true:p.saldoPendiente>0);
+  });
+  var totalPendiente=pendientes.reduce(function(a,p){
+    return a+(p.saldoPendiente!==undefined?p.saldoPendiente:(p.monto||0));
+  },0);
+  var vencidos=pendientes.filter(function(p){
+    if(!p.vence)return false;
+    var parts=p.vence.split("-");
+    if(parts.length<3)return false;
+    return new Date(p.vence)<new Date();
+  }).length;
+
   return'<div style="background:linear-gradient(135deg,#1E5631 0%,#15803D 100%);padding:28px 20px 20px;">'+
     '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">'+
-      '<div><h1 style="color:'+W+';font-size:24px;font-weight:800;margin:0 0 4px;">💰 Cobros</h1><p style="color:#BBF7D0;font-size:15px;margin:0;">Por cobrar: <strong>$'+total+'</strong></p></div>'+
-      '<div style="display:flex;gap:8px;">'+
-        '<button onclick="exportarCobros()" style="background:rgba(255,255,255,0.15);border:none;border-radius:12px;padding:8px 12px;color:'+W+';font-size:13px;font-weight:600;cursor:pointer;" title="Exportar todos (formato Perseo)">📤 Perseo</button>'+
-        '<button onclick="exportarCobrosRendicion()" style="background:rgba(255,255,255,0.1);border:1.5px solid rgba(255,255,255,0.3);border-radius:12px;padding:8px 12px;color:'+W+';font-size:13px;font-weight:600;cursor:pointer;" title="Exportar solo pendientes">📋 Rendición</button>'+
-        '<button onclick="setState({modal:{tipo:\'nuevoCobro\'}})" style="background:rgba(255,255,255,0.25);border:none;border-radius:12px;padding:8px 14px;color:'+W+';font-size:13px;font-weight:700;cursor:pointer;">➕</button>'+
+      '<div>'+
+        '<h1 style="color:#fff;font-size:26px;font-weight:900;margin:0 0 4px;">💼 Cartera</h1>'+
+        '<p style="color:rgba(255,255,255,0.8);font-size:14px;margin:0;">Pedidos a crédito pendientes</p>'+
+      '</div>'+
+      '<div style="text-align:right;">'+
+        '<div style="font-size:28px;font-weight:900;color:#fff;">$'+totalPendiente.toFixed(2)+'</div>'+
+        (vencidos>0?'<div style="background:#DC2626;border-radius:8px;padding:2px 8px;font-size:12px;color:#fff;font-weight:700;">'+vencidos+' vencidos</div>':"<div style='font-size:12px;color:rgba(255,255,255,0.7);'>Al día ✅</div>")+
       '</div>'+
     '</div>'+
+    '<div style="display:flex;gap:8px;">'+
+      '<button onclick="exportarCobros()" style="background:rgba(255,255,255,0.15);border:none;border-radius:12px;padding:8px 12px;color:#fff;font-size:13px;font-weight:600;cursor:pointer;">📤 Perseo</button>'+
+      '<button onclick="exportarCobrosRendicion()" style="background:rgba(255,255,255,0.1);border:1.5px solid rgba(255,255,255,0.3);border-radius:12px;padding:8px 12px;color:#fff;font-size:13px;font-weight:600;cursor:pointer;">📋 Rendición</button>'+
+    '</div>'+
   '</div>'+
-  '<div style="padding:12px 16px;display:flex;flex-direction:column;gap:10px;">'+
-  (ST.cobros.length===0?empty("💰","No hay cobros registrados"):
-  ST.cobros.map(function(c){
-    var isV=c.estado==="vencido",isC=c.estado==="cobrado";
-    return'<div style="background:'+W+';border:1.5px solid '+(isV?R:isC?"#BBF7D0":"#FDE68A")+';border-radius:18px;padding:16px;">'+
-      '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">'+
-        '<div><h3 style="font-size:17px;font-weight:700;color:'+N+';margin:0 0 2px;">'+h(c.cliente||"")+'</h3><p style="font-size:13px;color:#64748B;margin:0;">Vence: '+h(c.vence||"")+" · "+h(c.tipo||"")+'</p></div>'+
-        '<span style="background:'+(isV?"#FEE2E2":isC?"#DCFCE7":"#FEF9C3")+';color:'+(isV?R:isC?G:"#854D0E")+';font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px;">'+(isV?"❌ Vencido":isC?"✅ Cobrado":"⏳ Por cobrar")+'</span>'+
+  '<div style="padding:0 16px 80px;margin-top:12px;display:flex;flex-direction:column;gap:10px;">'+
+  (pendientes.length===0?
+    '<div style="text-align:center;padding:60px 20px;">'+
+      '<div style="font-size:48px;margin-bottom:12px;">🎉</div>'+
+      '<p style="font-size:18px;font-weight:700;color:#166534;">Todo cobrado</p>'+
+      '<p style="font-size:14px;color:#94A3B8;">No hay pedidos a crédito pendientes</p>'+
+    '</div>'
+  :
+  pendientes.sort(function(a,b){
+    if(!a.vence)return 1;if(!b.vence)return -1;
+    return new Date(a.vence)-new Date(b.vence);
+  }).map(function(p){
+    var saldo=p.saldoPendiente!==undefined?p.saldoPendiente:(p.monto||0);
+    var abonado=(p.monto||0)-saldo;
+    var vencido=p.vence&&new Date(p.vence)<new Date();
+    return'<div style="background:#fff;border:1.5px solid '+(vencido?"#FCA5A5":"#E2E8F0")+';border-radius:18px;padding:16px;">'+
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">'+
+        '<div>'+
+          '<h3 style="font-size:16px;font-weight:700;color:#0F172A;margin:0 0 2px;">'+h(p.cliente||"")+'</h3>'+
+          '<p style="font-size:12px;color:#64748B;margin:0;">'+h(p.fecha||"")+' · '+h(p.factura||"Sin factura")+'</p>'+
+        '</div>'+
+        '<span style="background:'+(vencido?"#FEE2E2":"#DCFCE7")+';color:'+(vencido?"#991B1B":"#166534")+';font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px;">'+
+          (vencido?"⚠️ Vencido":"✅ Vigente")+
+        '</span>'+
       '</div>'+
-      ((c.abonado||0)>0&&!isC?'<div style="background:#F0FDF4;border-radius:10px;padding:8px 12px;margin-bottom:8px;"><p style="font-size:13px;color:'+G+';font-weight:600;margin:0;">Abonado: $'+c.abonado+' · Saldo: $'+c.saldo+'</p></div>':"")+
-      '<div style="display:flex;justify-content:space-between;align-items:center;padding-top:10px;border-top:1px solid #F1F5F9;">'+
-        '<span style="font-size:22px;font-weight:800;color:'+(isV?R:N)+';">$'+(c.saldo||c.monto||0)+'</span>'+
-        (!isC?'<div style="display:flex;gap:8px;"><button onclick="setState({modal:{tipo:\'abono\',cobroId:\''+c.id+'\',cobroCli:\''+h(c.cliente||"")+'\',cobroSaldo:'+(c.saldo||0)+'}})" style="background:'+A+';border:none;border-radius:12px;padding:8px 14px;cursor:pointer;color:'+W+';font-size:13px;font-weight:700;">Abonar</button><button onclick="marcarCobrado(\''+c.id+'\')" style="background:'+G+';border:none;border-radius:12px;padding:8px 14px;cursor:pointer;color:'+W+';font-size:13px;font-weight:700;">Cobrado ✓</button></div>':"")+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">'+
+        '<div style="background:#F8FAFC;border-radius:10px;padding:10px;text-align:center;">'+
+          '<p style="font-size:11px;color:#94A3B8;margin:0 0 2px;">Total pedido</p>'+
+          '<p style="font-size:16px;font-weight:700;color:#0F172A;margin:0;">$'+(p.monto||0).toFixed(2)+'</p>'+
+        '</div>'+
+        '<div style="background:'+(saldo>0?"#FEF2F2":"#F0FDF4")+';border-radius:10px;padding:10px;text-align:center;">'+
+          '<p style="font-size:11px;color:#94A3B8;margin:0 0 2px;">Saldo pendiente</p>'+
+          '<p style="font-size:16px;font-weight:700;color:'+(saldo>0?"#DC2626":"#16A34A")+';margin:0;">$'+saldo.toFixed(2)+'</p>'+
+        '</div>'+
+      '</div>'+
+      (p.notas?'<p style="font-size:12px;color:#64748B;background:#F8FAFC;border-radius:8px;padding:6px 10px;margin-bottom:10px;">'+h(p.notas)+'</p>':"")+
+      '<div style="display:flex;gap:8px;">'+
+        '<button onclick="modalCobrarPedido(\''+p.id+'\','+saldo+')" style="flex:1;background:#16A34A;border:none;border-radius:12px;padding:10px;color:#fff;font-size:14px;font-weight:700;cursor:pointer;">💰 Cobrar</button>'+
+        '<button onclick="enviarWhatsAppCobro(\''+encodeURIComponent(p.cliente||"")+'\',' +(p.monto||0)+','+saldo+')" style="background:#25D366;border:none;border-radius:12px;padding:10px 14px;font-size:18px;cursor:pointer;">💬</button>'+
       '</div>'+
     '</div>';
   }).join(""))+
   '</div>';
+}
+
+function modalCobrarPedido(pedidoId, saldoActual){
+  setState({modal:{tipo:'cobrarPedido',pedidoId:pedidoId,saldoActual:saldoActual}});
+}
+
+function renderModalCobrarPedido(){
+  var m=ST.modal;
+  if(!m)return "";
+  var pedido=ST.pedidos.find(function(p){return p.id===m.pedidoId;});
+  if(!pedido)return ov(mh("💰 Registrar Cobro")+'<p>Pedido no encontrado</p>');
+  return ov(
+    mh("💰 Cobrar — "+h(pedido.cliente||""))+
+    '<div style="background:#F0FDF4;border-radius:12px;padding:12px;margin-bottom:16px;">'+
+      '<p style="font-size:13px;color:#166534;margin:0;">Saldo pendiente: <strong>$'+(m.saldoActual||0).toFixed(2)+'</strong></p>'+
+      '<p style="font-size:12px;color:#94A3B8;margin:4px 0 0;">Factura: '+h(pedido.factura||"Sin factura")+'</p>'+
+    '</div>'+
+    inp("cb_monto","Monto cobrado ($) *","number","0.00","",true)+
+    sel("cb_tipo","Forma de cobro",[
+      {v:"Efectivo",l:"💵 Efectivo"},
+      {v:"Transferencia",l:"📱 Transferencia"},
+      {v:"Cheque",l:"📄 Cheque"},
+      {v:"Mixto",l:"🔀 Mixto (efectivo + transferencia)"}
+    ])+
+    '<div id="cb_ref_wrap" style="display:none;">'+inp("cb_ref","Referencia de transferencia","text","Código de transacción")+'</div>'+
+    '<script>document.getElementById("cb_tipo").onchange=function(){var w=document.getElementById("cb_ref_wrap");if(w)w.style.display=(this.value==="Transferencia"||this.value==="Mixto")?"block":"none";};<\/script>'+
+    sbtn("registrarCobroPedido('"+m.pedidoId+"',"+m.saldoActual+")","✅ Registrar cobro","#16A34A")
+  );
+}
+
+async function registrarCobroPedido(pedidoId, saldoActual){
+  var montoCobrado=parseFloat(val("cb_monto")||0);
+  if(!montoCobrado||montoCobrado<=0){toast("Ingresá el monto cobrado",R);return;}
+  var nuevoSaldo=Math.max(0,saldoActual-montoCobrado);
+  var estado=nuevoSaldo===0?"cobrado":"parcial";
+  try{
+    await db.collection("pedidos").doc(pedidoId).update({
+      saldoPendiente:nuevoSaldo,
+      estadoCobro:estado,
+      ultimoCobro:montoCobrado,
+      formaCobro:val("cb_tipo")||"Efectivo",
+      refCobro:val("cb_ref")||"",
+      fechaCobro:new Date().toLocaleDateString("es-EC"),
+      ts:firebase.firestore.FieldValue.serverTimestamp()
+    });
+    var idx=ST.pedidos.findIndex(function(x){return x.id===pedidoId;});
+    if(idx>=0){ST.pedidos[idx].saldoPendiente=nuevoSaldo;ST.pedidos[idx].estadoCobro=estado;}
+    toast(nuevoSaldo===0?"✅ Cobro completo":"💰 Abono registrado — saldo: $"+nuevoSaldo.toFixed(2),G);
+    setState({modal:null});render();
+  }catch(e){toast("Error: "+e.message,R);}
+}
+
+function enviarWhatsAppCobro(clienteEnc, total, saldo){
+  var cliente=decodeURIComponent(clienteEnc);
+  var msg="Hola "+cliente+", le recordamos que tiene un saldo pendiente de $"+saldo.toFixed(2)+" de su pedido de $"+total.toFixed(2)+". Por favor coordinar el pago. Gracias — La Clínica Licores 🍾";
+  window.open("https://wa.me/?text="+encodeURIComponent(msg),"_blank");
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -528,209 +630,74 @@ function renderRuta(){
 }
 
 function renderCatalogo(){
-  var cats=["Todos","Cerveza","Vino","Aguardiente","Ron","Whisky","Tequila","Vodka","Ginebra","Champagne","Coctelería","Otro"];
+  var cats=["Todos","Licores","Bebidas","Cerveza","Confitería","Snack","Helados","Coctelería","General","Otro"];
   var filtCat=ST.subTab||"Todos";
-  var prods=(ST.catalogo||[]).filter(function(p){return filtCat==="Todos"||p.categoria===filtCat;});
+  var busq=(ST.searchCat||"").toLowerCase();
+  var prods=(ST.catalogo||[])
+    .filter(function(p){
+      var matchCat=filtCat==="Todos"||p.categoria===filtCat;
+      var matchBusq=!busq||p.nombre.toLowerCase().indexOf(busq)>=0||p.codigo.toLowerCase().indexOf(busq)>=0;
+      return matchCat&&matchBusq;
+    })
+    .sort(function(a,b){return(a.nombre||"").localeCompare(b.nombre||"");});
+
   return pageHeader("🧴 Catálogo ("+ST.catalogo.length+")","#7B241C","#922B21",
-    '<button onclick="setState({modal:{tipo:\'nuevoProducto\'}})" style="background:rgba(255,255,255,0.2);border:none;border-radius:12px;padding:8px 14px;color:'+W+';font-size:13px;font-weight:700;cursor:pointer;">➕ Agregar</button>')+
-  '<div style="padding:10px 16px;display:flex;gap:8px;overflow-x:auto;background:'+W+';border-bottom:1px solid #E2E8F0;">'+
-  cats.map(function(c){return'<button onclick="setState({subTab:\''+c+'\'})" style="background:'+(filtCat===c?"#7B241C":S)+';color:'+(filtCat===c?W:N)+';border:none;border-radius:999px;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;">'+c+'</button>';}).join("")+
+    '<button onclick="setState({modal:{tipo:\'nuevoProducto\'}})" style="background:rgba(255,255,255,0.2);border:none;border-radius:12px;padding:8px 14px;color:#fff;font-size:13px;font-weight:700;cursor:pointer;">➕ Agregar</button>')+
+  // Search bar
+  '<div style="padding:12px 16px 0;">'+
+    '<div style="background:#fff;border:2px solid #E2E8F0;border-radius:14px;display:flex;align-items:center;gap:10px;padding:0 14px;">'+
+      '<span style="font-size:18px;">🔍</span>'+
+      '<input id="cat_search" value="'+(ST.searchCat||"")+'" placeholder="Buscar producto..." '+
+      'oninput="setState({searchCat:this.value})" '+
+      'style="flex:1;border:none;padding:12px 0;font-size:15px;outline:none;background:transparent;"/>'+
+      (ST.searchCat?'<button onclick="setState({searchCat:\'\'})" style="background:none;border:none;font-size:18px;cursor:pointer;color:#94A3B8;">✕</button>':"")+
+    '</div>'+
   '</div>'+
-  '<div style="padding:12px 16px;display:flex;flex-direction:column;gap:10px;">'+
-  (prods.length===0?empty("🧴","No hay productos aún"):
-  prods.map(function(p){
-    return'<div style="background:'+W+';border:1.5px solid #E2E8F0;border-radius:18px;padding:16px;box-shadow:0 1px 4px rgba(0,0,0,0.06);">'+
-      '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">'+
-        '<div><h3 style="font-size:16px;font-weight:700;color:'+N+';margin:0 0 2px;">'+h(p.nombre||"")+'</h3><p style="font-size:13px;color:#64748B;margin:0;">'+h(p.categoria||"")+" · "+h(p.presentacion||"")+'</p></div>'+
-        '<span style="background:'+(p.disponible==="Disponible"?"#DCFCE7":p.disponible==="Poco stock"?"#FEF9C3":"#FEE2E2")+';color:'+(p.disponible==="Disponible"?"#166534":p.disponible==="Poco stock"?"#854D0E":"#991B1B")+';font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px;">'+h(p.disponible||"Disponible")+'</span>'+
-      '</div>'+
-      '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">'+
-        '<div style="background:#E2EFDA;border-radius:10px;padding:8px;text-align:center;"><p style="font-size:11px;color:#1E5631;margin:0 0 2px;font-weight:600;">Precio A</p><p style="font-size:15px;font-weight:800;color:#1E5631;margin:0;">$'+(p.precioA||0)+'</p></div>'+
-        '<div style="background:#FEF3D0;border-radius:10px;padding:8px;text-align:center;"><p style="font-size:11px;color:#B7770D;margin:0 0 2px;font-weight:600;">Precio B</p><p style="font-size:15px;font-weight:800;color:#B7770D;margin:0;">$'+(p.precioB||0)+'</p></div>'+
-        '<div style="background:#FADBD8;border-radius:10px;padding:8px;text-align:center;"><p style="font-size:11px;color:#7B241C;margin:0 0 2px;font-weight:600;">Precio C</p><p style="font-size:15px;font-weight:800;color:#7B241C;margin:0;">$'+(p.precioC||0)+'</p></div>'+
-      '</div>'+
-      '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding-top:8px;border-top:1px solid #F1F5F9;">'+
-        '<span style="font-size:13px;color:#64748B;">'+(p.origen==="Colombia"?"🇨🇴":p.origen==="Peru"?"🇵🇪":"🇪🇨")+" "+h(p.origen||"Ecuador")+(p.promocion==="Sí"?" · 🔥 Promo":"")+'</span>'+
-        '<div style="display:flex;gap:6px;">'+
-          '<button onclick="confirmarEliminar(\'catalogo\',\''+p.id+'\',\''+h(p.nombre||"")+'\')" style="background:#FFF1F2;border:none;border-radius:10px;padding:6px 10px;cursor:pointer;font-size:16px;">🗑️</button>'+
-        '</div>'+
-      '</div>'+
-    '</div>';
-  }).join(""))+
-  '</div>';
-}
-
-function renderHistorial(){
-  var meses=["E","F","M","A","M","J","J","A","S","O","N","D"];
-  return pageHeader("📈 Historial Clientes","#4A235A","#6C3483","")+
-  '<div style="padding:12px 16px;display:flex;flex-direction:column;gap:10px;">'+
-  (ST.clientes.length===0?empty("📈","No hay clientes aún"):
-  ST.clientes.map(function(c){
-    var hist=c.historial||{};
-    var maxVal=Math.max.apply(null,meses.map(function(_,i){return hist[i]||0;}).concat([1]));
-    var total=Object.values(hist).reduce(function(a,b){return a+(b||0);},0);
-    return'<div style="background:'+W+';border:1.5px solid #E2E8F0;border-radius:18px;padding:16px;box-shadow:0 1px 4px rgba(0,0,0,0.06);">'+
-      '<div style="display:flex;justify-content:space-between;margin-bottom:12px;">'+
-        '<div><h3 style="font-size:16px;font-weight:700;color:'+N+';margin:0 0 2px;">'+h(c.nombre||"")+'</h3><p style="font-size:13px;color:#64748B;margin:0;">'+h(c.zona||"")+'</p></div>'+
-        '<span style="font-size:22px;font-weight:800;color:'+N+';">$'+total+'</span>'+
-      '</div>'+
-      '<div style="display:flex;align-items:flex-end;gap:3px;height:50px;margin-bottom:4px;">'+
-      meses.map(function(_,i){
-        var v=hist[i]||0;var hh=Math.max((v/maxVal)*50,2);
-        return'<div style="flex:1;background:'+(v>0?"#7C3AED":"#E2E8F0")+';border-radius:3px 3px 0 0;height:'+hh+'px;"></div>';
-      }).join("")+
-      '</div>'+
-      '<div style="display:flex;gap:3px;">'+meses.map(function(m){return'<div style="flex:1;text-align:center;font-size:9px;color:#94A3B8;">'+m+'</div>';}).join("")+'</div>'+
-    '</div>';
-  }).join(""))+
-  '</div>';
-}
-
-function renderProspectos(){
-  var estColors={"🔥 Interesado":"#FEF9C3","📞 Por contactar":"#EEF2FF","🤝 En negociación":"#FEF3C7","✅ Convertido":"#DCFCE7","❄️ Frío":"#F1F5F9","❌ Descartado":"#FEE2E2"};
-  return pageHeader("🆕 Prospectos ("+ST.prospectos.length+")","#B7770D","#D4AC0D",
-    '<button onclick="setState({modal:{tipo:\'nuevoProspecto\'}})" style="background:rgba(255,255,255,0.2);border:none;border-radius:12px;padding:8px 14px;color:'+W+';font-size:13px;font-weight:700;cursor:pointer;">➕ Nuevo</button>')+
-  '<div style="padding:12px 16px;display:flex;flex-direction:column;gap:10px;">'+
-  (ST.prospectos.length===0?empty("🆕","No hay prospectos. Agregá negocios que pueden convertirse en clientes."):
-  ST.prospectos.map(function(p){
-    return'<div style="background:'+W+';border:1.5px solid #E2E8F0;border-radius:18px;padding:16px;box-shadow:0 1px 4px rgba(0,0,0,0.06);">'+
-      '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">'+
-        '<div style="flex:1;"><h3 style="font-size:17px;font-weight:700;color:'+N+';margin:0 0 2px;">'+h(p.nombre||"")+'</h3><p style="font-size:14px;color:#64748B;margin:0;">'+h(p.contacto||"")+" · "+h(p.zona||"")+'</p></div>'+
-        '<span style="background:'+(estColors[p.estado]||"#F1F5F9")+';font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px;color:#374151;">'+h(p.estado||"📞 Por contactar")+'</span>'+
-      '</div>'+
-      (p.proximoPaso?'<p style="font-size:13px;color:#475569;background:#F8FAFC;border-radius:10px;padding:8px 12px;margin-bottom:8px;">📋 '+h(p.proximoPaso)+'</p>':"")+
-      '<div style="display:flex;justify-content:space-between;align-items:center;padding-top:8px;border-top:1px solid #F1F5F9;">'+
-        '<span style="font-size:14px;color:#64748B;">📞 '+h(p.tel||"")+'</span>'+
-        (p.estado!=="✅ Convertido"?'<button onclick="convertirProspecto(\''+p.id+'\')" style="background:#1E5631;border:none;border-radius:12px;padding:8px 14px;cursor:pointer;color:'+W+';font-size:13px;font-weight:700;">✅ Convertir</button>':"")+
-      '</div>'+
-    '</div>';
-  }).join(""))+
-  '</div>';
-}
-
-function renderComisiones(){
-  var porc=(ST.perfil&&ST.perfil.comision)||5;
-  var meta=(ST.perfil&&ST.perfil.meta)||2000;
-  var bono=(ST.perfil&&ST.perfil.bono)||100;
-  var totalV=ST.pedidos.filter(function(p){return p.estado==="entregado";}).reduce(function(a,p){return a+(p.monto||0);},0);
-  var comBruta=totalV*porc/100;
-  var totalG=ST.gastos.reduce(function(a,g){return a+(g.monto||0);},0);
-  var neta=comBruta-totalG+(totalV>=meta?bono:0);
-  var avance=Math.min((totalV/meta)*100,100);
-  return pageHeader("🎯 Mis Comisiones","#1B4F72","#2E86C1","")+
-  '<div style="padding:12px 16px;display:flex;flex-direction:column;gap:12px;">'+
-    '<div style="background:linear-gradient(135deg,#1B4F72,#2874A6);border-radius:18px;padding:20px;">'+
-      '<p style="color:#93C5FD;font-size:14px;margin:0 0 4px;">% Comisión</p>'+
-      '<p style="color:'+W+';font-size:42px;font-weight:800;margin:0 0 4px;">'+porc+'%</p>'+
-      '<p style="color:#CBD5E1;font-size:13px;margin:0;">Meta: $'+meta+' · Bono: $'+bono+'</p>'+
-    '</div>'+
-    '<div style="background:'+W+';border-radius:18px;padding:16px;box-shadow:0 1px 4px rgba(0,0,0,0.06);">'+
-      '<p style="font-size:15px;font-weight:700;color:'+N+';margin:0 0 12px;">Progreso</p>'+
-      '<div style="background:#F1F5F9;border-radius:999px;height:12px;margin-bottom:8px;overflow:hidden;"><div style="background:'+(avance>=100?G:avance>=70?A:R)+';height:100%;width:'+avance+'%;"></div></div>'+
-      '<div style="display:flex;justify-content:space-between;"><span style="font-size:14px;color:#64748B;">$'+totalV+'</span><span style="font-size:14px;font-weight:700;color:'+N+';">'+avance.toFixed(0)+'%</span><span style="font-size:14px;color:#64748B;">Meta: $'+meta+'</span></div>'+
-    '</div>'+
-    [["Ventas del mes","$"+totalV,N],["Comisión bruta","$"+comBruta.toFixed(2),"#1B4F72"],["Gastos de ruta","-$"+totalG,R],["Bono",totalV>=meta?"$"+bono:"$0 (falta $"+(meta-totalV)+")",totalV>=meta?G:"#94A3B8"],["💰 GANANCIA NETA","$"+neta.toFixed(2),G]].map(function(r,i){
-      return'<div style="background:'+W+';border-radius:14px;padding:16px;display:flex;justify-content:space-between;align-items:center;box-shadow:0 1px 4px rgba(0,0,0,0.06);'+(i===4?"border:2px solid "+G+";":"")+'"><span style="font-size:'+(i===4?16:15)+'px;font-weight:'+(i===4?700:500)+';color:#64748B;">'+r[0]+'</span><span style="font-size:'+(i===4?22:18)+'px;font-weight:800;color:'+r[2]+';"> '+r[1]+'</span></div>';
+  // Category filter
+  '<div style="padding:12px 16px 0;display:flex;gap:8px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;">'+
+    cats.map(function(c){
+      var act=filtCat===c;
+      return'<button onclick="setState({subTab:\''+c+'\'})" style="white-space:nowrap;background:'+(act?"#7B241C":"#F1F5F9")+';color:'+(act?"#fff":"#475569")+';border:none;border-radius:999px;padding:7px 14px;font-size:13px;font-weight:700;cursor:pointer;">'+c+'</button>';
     }).join("")+
-  '</div>';
-}
-
-function renderDevoluciones(){
-  var total=ST.devoluciones.reduce(function(a,d){return a+(d.monto||0);},0);
-  return pageHeader("📷 Devoluciones","#7B241C","#922B21",
-    '<button onclick="setState({modal:{tipo:\'nuevaDev\'}})" style="background:rgba(255,255,255,0.2);border:none;border-radius:12px;padding:8px 14px;color:'+W+';font-size:13px;font-weight:700;cursor:pointer;">➕ Nueva</button>')+
-  '<div style="padding:12px 16px;display:flex;flex-direction:column;gap:10px;">'+
-  (total>0?'<div style="background:#FEE2E2;border-radius:14px;padding:12px 16px;"><p style="color:#991B1B;font-size:15px;font-weight:700;margin:0;">Total devuelto: $'+total+'</p></div>':"")+
-  (ST.devoluciones.length===0?empty("📷","No hay devoluciones registradas"):
-  ST.devoluciones.map(function(d){
-    return'<div style="background:'+W+';border:1.5px solid #E2E8F0;border-radius:18px;padding:16px;box-shadow:0 1px 4px rgba(0,0,0,0.06);">'+
+  '</div>'+
+  '<div style="padding:12px 16px 80px;display:flex;flex-direction:column;gap:10px;">'+
+  '<p style="font-size:12px;color:#94A3B8;text-align:center;">'+prods.length+' productos</p>'+
+  (prods.length===0?empty("🧴","Sin resultados"):
+  prods.map(function(p){
+    var disp=p.disponible==="Disponible";
+    return'<div style="background:#fff;border:1.5px solid '+(disp?"#E2E8F0":"#FEE2E2")+';border-radius:16px;padding:14px;opacity:'+(disp?1:0.75)+';">'+
       '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">'+
-        '<div><h3 style="font-size:17px;font-weight:700;color:'+N+';margin:0 0 2px;">'+h(d.cliente||"")+'</h3><p style="font-size:13px;color:#64748B;margin:0;">'+h(d.producto||"")+" · "+h(d.fecha||"")+'</p></div>'+
-        '<span style="background:'+(d.estado==="✅ Resuelto"?"#DCFCE7":"#FEF9C3")+';color:'+(d.estado==="✅ Resuelto"?G:"#854D0E")+';font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px;">'+h(d.estado||"⏳ Pendiente")+'</span>'+
+        '<div style="flex:1;min-width:0;">'+
+          '<h3 style="font-size:14px;font-weight:700;color:'+N+';margin:0 0 2px;line-height:1.3;">'+h(p.nombre)+'</h3>'+
+          '<p style="font-size:12px;color:#94A3B8;margin:0;">'+h(p.categoria)+' · '+h(p.codigo)+'</p>'+
+        '</div>'+
+        '<div style="display:flex;gap:6px;align-items:center;">'+
+          '<button onclick="toggleDisponible(\''+p.id+'\',\''+p.disponible+'\')" style="background:'+(disp?"#DCFCE7":"#FEE2E2")+';border:none;border-radius:8px;padding:4px 8px;font-size:11px;font-weight:700;cursor:pointer;color:'+(disp?"#166534":"#991B1B")+';white-space:nowrap;">'+
+            (disp?"✅ Disp.":"❌ Sin stock")+
+          '</button>'+
+          '<button onclick="setState({modal:{tipo:\'editProducto\',prod:JSON.parse(JSON.stringify(ST.catalogo.find(function(x){return x.id===\''+p.id+'\'})))}})" '+
+          'style="background:#EFF6FF;border:none;border-radius:8px;padding:4px 8px;font-size:16px;cursor:pointer;">✏️</button>'+
+        '</div>'+
       '</div>'+
-      '<p style="font-size:14px;color:#475569;margin:0 0 8px;">Motivo: '+h(d.motivo||"")+'</p>'+
-      '<div style="display:flex;justify-content:space-between;align-items:center;padding-top:8px;border-top:1px solid #F1F5F9;">'+
-        '<span style="font-size:20px;font-weight:800;color:'+R+';">-$'+(d.monto||0)+'</span>'+
-        (d.estado!=="✅ Resuelto"?'<button onclick="resolverDev(\''+d.id+'\')" style="background:'+G+';border:none;border-radius:12px;padding:8px 14px;cursor:pointer;color:'+W+';font-size:13px;font-weight:700;">✅ Resolver</button>':"")+
-      '</div>'+
-    '</div>';
-  }).join(""))+
-  '</div>';
-}
-
-function renderGrafico(){
-  var semanas=["Sem 1","Sem 2","Sem 3","Sem 4"];
-  var meta=(ST.perfil&&ST.perfil.meta)||2000;
-  var metaSem=meta/4;
-  var ventas=semanas.map(function(_,i){return ST.pedidos.filter(function(p){return p.estado==="entregado"&&(p.semana||1)===(i+1);}).reduce(function(a,p){return a+(p.monto||0);},0);});
-  var maxVal=Math.max.apply(null,ventas.concat([metaSem,1]));
-  var totalMes=ventas.reduce(function(a,b){return a+b;},0);
-  return pageHeader("📊 Gráfico de Ventas","#0F2240","#1A3A5C","")+
-  '<div style="padding:12px 16px;display:flex;flex-direction:column;gap:12px;">'+
-    '<div style="background:linear-gradient(135deg,'+N+','+N2+');border-radius:18px;padding:20px;">'+
-      '<p style="color:#93C5FD;font-size:14px;margin:0 0 4px;">Total del mes</p>'+
-      '<p style="color:'+W+';font-size:36px;font-weight:800;margin:0 0 4px;">$'+totalMes+'</p>'+
-      '<p style="color:#CBD5E1;font-size:13px;margin:0;">Meta: $'+meta+(totalMes>=meta?" · ✅ Cumplida":" · ⏳ En progreso")+'</p>'+
-    '</div>'+
-    '<div style="background:'+W+';border-radius:18px;padding:20px;box-shadow:0 1px 4px rgba(0,0,0,0.06);">'+
-      '<p style="font-size:15px;font-weight:700;color:'+N+';margin:0 0 20px;">Ventas vs Meta semanal</p>'+
-      '<div style="display:flex;align-items:flex-end;gap:12px;height:120px;margin-bottom:12px;">'+
-      semanas.map(function(s,i){
-        var v=ventas[i];
-        var hv=Math.max((v/maxVal)*100,4);
-        var hm=Math.max((metaSem/maxVal)*100,4);
-        return'<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;"><span style="font-size:10px;color:#64748B;">$'+v+'</span>'+
-          '<div style="width:100%;display:flex;gap:2px;align-items:flex-end;height:100px;">'+
-            '<div style="flex:1;background:#1D4ED8;border-radius:4px 4px 0 0;height:'+hv+'px;"></div>'+
-            '<div style="flex:1;background:#F59E0B;border-radius:4px 4px 0 0;height:'+hm+'px;opacity:0.6;"></div>'+
+      // Prices - A and B hidden with dots, C shown
+      '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:8px;">'+
+        '<div style="background:#F8FAFC;border-radius:10px;padding:8px;text-align:center;">'+
+          '<p style="font-size:10px;color:#94A3B8;margin:0 0 2px;font-weight:600;">Precio A</p>'+
+          '<div style="display:flex;align-items:center;justify-content:center;gap:4px;">'+
+            '<span id="pa_'+p.id+'" style="font-size:14px;font-weight:700;color:#64748B;">••••</span>'+
+            '<button onclick="togglePrecio(\'pa_'+p.id+'\','+p.precioA+')" style="background:none;border:none;cursor:pointer;font-size:12px;color:#94A3B8;padding:0;">👁</button>'+
           '</div>'+
-        '</div>';
-      }).join("")+
-      '</div>'+
-      '<div style="display:flex;gap:8px;"><div style="display:flex;align-items:center;gap:4px;"><div style="width:12px;height:12px;background:#1D4ED8;border-radius:2px;"></div><span style="font-size:12px;color:#64748B;">Ventas</span></div><div style="display:flex;align-items:center;gap:4px;"><div style="width:12px;height:12px;background:#F59E0B;border-radius:2px;opacity:0.7;"></div><span style="font-size:12px;color:#64748B;">Meta</span></div></div>'+
-    '</div>'+
-  '</div>';
-}
-
-function renderRanking(){
-  var sorted=ST.clientes.slice().sort(function(a,b){return(b.monto||0)-(a.monto||0);}).slice(0,10);
-  var total=sorted.reduce(function(a,c){return a+(c.monto||0);},0)||1;
-  var med=["🥇","🥈","🥉","4°","5°","6°","7°","8°","9°","10°"];
-  return pageHeader("🏆 Ranking Clientes","#7D6608","#B7950B","")+
-  '<div style="padding:12px 16px;display:flex;flex-direction:column;gap:8px;">'+
-  (sorted.length===0?empty("🏆","No hay datos aún"):
-  sorted.map(function(c,i){
-    return'<div style="background:'+W+';border:1.5px solid '+(i<3?"#F59E0B":"#E2E8F0")+';border-radius:16px;padding:14px 16px;box-shadow:0 1px 4px rgba(0,0,0,0.06);">'+
-      '<div style="display:flex;align-items:center;gap:12px;">'+
-        '<span style="font-size:'+(i<3?28:20)+'px;font-weight:800;min-width:36px;">'+med[i]+'</span>'+
-        '<div style="flex:1;">'+
-          '<h3 style="font-size:16px;font-weight:700;color:'+N+';margin:0 0 4px;">'+h(c.nombre||"")+'</h3>'+
-          '<div style="background:#F1F5F9;border-radius:999px;height:6px;overflow:hidden;"><div style="background:'+(i===0?"#D4AC0D":i===1?"#9CA3AF":i===2?"#CD7F32":"#1D4ED8")+';height:100%;width:'+((c.monto||0)/total*100).toFixed(0)+'%;"></div></div>'+
         '</div>'+
-        '<div style="text-align:right;"><p style="font-size:17px;font-weight:800;color:'+N+';margin:0;">$'+(c.monto||0)+'</p><p style="font-size:12px;color:#64748B;margin:0;">'+((c.monto||0)/total*100).toFixed(1)+'%</p></div>'+
-      '</div>'+
-    '</div>';
-  }).join(""))+
-  '</div>';
-}
-
-function renderUsuarios(){
-  if(!puedever("usuarios"))return'<div style="padding:40px;text-align:center;color:#94A3B8;"><p style="font-size:40px;">🔒</p><p>Sin acceso</p></div>';
-  return pageHeader("👥 Usuarios","#7C3AED","#5B21B6",
-    '<button onclick="setState({modal:{tipo:\'nuevoUsuario\'}})" style="background:rgba(255,255,255,0.2);border:none;border-radius:12px;padding:8px 14px;color:'+W+';font-size:13px;font-weight:700;cursor:pointer;">➕ Nuevo</button>')+
-  '<div style="padding:12px 16px;display:flex;flex-direction:column;gap:10px;">'+
-  (ST.usuarios.length===0?empty("👥","No hay usuarios. Agregá el primero."):
-  ST.usuarios.map(function(u){
-    return'<div style="background:'+W+';border:1.5px solid #E2E8F0;border-radius:18px;padding:16px;">'+
-      '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">'+
-        '<div><h3 style="font-size:17px;font-weight:700;color:'+N+';margin:0 0 2px;">'+h(u.nombre||"")+'</h3><p style="font-size:14px;color:#64748B;margin:0;">'+h(u.email||"")+'</p></div>'+
-        '<span style="background:#EEF2FF;color:#3730A3;font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px;">'+rolLabel(u.rol||"vendedor")+'</span>'+
-      '</div>'+
-      '<div style="display:flex;justify-content:space-between;align-items:center;padding-top:8px;border-top:1px solid #F1F5F9;">'+
-        '<span style="font-size:13px;color:'+(u.activo!==false?G:R)+';font-weight:600;">'+(u.activo!==false?"● Activo":"● Inactivo")+'</span>'+
-        '<div style="display:flex;gap:6px;">'+
-          '<button onclick="cambiarPassUsuario(\''+h(u.email||"")+'\',\''+u.id+'\')" style="background:'+S+';border:none;border-radius:10px;padding:6px 10px;cursor:pointer;font-size:16px;">🔑</button>'+
-          '<button onclick="toggleUsuario(\''+u.id+'\','+(u.activo!==false)+')" style="background:'+(u.activo!==false?"#FFF1F2":S)+';border:none;border-radius:10px;padding:6px 10px;cursor:pointer;font-size:16px;">'+(u.activo!==false?"🚫":"✅")+'</button>'+
+        '<div style="background:#F8FAFC;border-radius:10px;padding:8px;text-align:center;">'+
+          '<p style="font-size:10px;color:#94A3B8;margin:0 0 2px;font-weight:600;">Precio B</p>'+
+          '<div style="display:flex;align-items:center;justify-content:center;gap:4px;">'+
+            '<span id="pb_'+p.id+'" style="font-size:14px;font-weight:700;color:#64748B;">••••</span>'+
+            '<button onclick="togglePrecio(\'pb_'+p.id+'\','+p.precioB+')" style="background:none;border:none;cursor:pointer;font-size:12px;color:#94A3B8;padding:0;">👁</button>'+
+          '</div>'+
+        '</div>'+
+        '<div style="background:#DCFCE7;border-radius:10px;padding:8px;text-align:center;">'+
+          '<p style="font-size:10px;color:#166534;margin:0 0 2px;font-weight:600;">Precio C ★</p>'+
+          '<span style="font-size:14px;font-weight:700;color:#166534;">$'+parseFloat(p.precioC||0).toFixed(2)+'</span>'+
         '</div>'+
       '</div>'+
     '</div>';
@@ -738,32 +705,27 @@ function renderUsuarios(){
   '</div>';
 }
 
-function renderAuditoria(){
-  var rol=ST.perfil?ST.perfil.rol:"vendedor";
-  var registros=rol==="dueno"?ST.auditoria:ST.auditoria.filter(function(a){return a.nivel<=2;});
-  var cols={1:A,2:R,3:P};
-  var labs={1:"✏️ Cambio",2:"🗑️ Eliminación",3:"👁️ Visualización"};
-  return pageHeader("📋 Historial de Actividad","#374151","#1F2937","")+
-  '<div style="padding:12px 16px;display:flex;flex-direction:column;gap:8px;">'+
-  (registros.length===0?empty("📋","No hay actividad registrada aún"):
-  registros.slice(0,50).map(function(a){
-    return'<div style="background:'+W+';border-left:4px solid '+(cols[a.nivel]||A)+';border-radius:0 14px 14px 0;padding:12px 16px;">'+
-      '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px;">'+
-        '<span style="font-size:12px;font-weight:700;color:'+(cols[a.nivel]||A)+';background:#F8FAFC;padding:2px 8px;border-radius:999px;">'+(labs[a.nivel]||"Acción")+'</span>'+
-        '<span style="font-size:12px;color:#94A3B8;">'+h(a.fecha||"")+" "+h(a.hora||"")+'</span>'+
-      '</div>'+
-      '<p style="font-size:14px;font-weight:600;color:'+N+';margin:4px 0 2px;">'+h(a.modulo||"")+" — "+h(a.accion||"")+'</p>'+
-      '<p style="font-size:13px;color:#64748B;margin:0;">'+h(a.detalle||"")+" · <strong>"+h(a.nombre||a.email||"")+"</strong> ("+h(a.rol||"")+")"+'</p>'+
-    '</div>';
-  }).join(""))+
-  '</div>';
+function togglePrecio(elId, precio){
+  var el=document.getElementById(elId);
+  if(!el)return;
+  if(el.textContent==="••••"){
+    el.textContent="$"+parseFloat(precio||0).toFixed(2);
+    el.style.color="#1E40AF";
+  } else {
+    el.textContent="••••";
+    el.style.color="#64748B";
+  }
 }
 
-function puedever(tab){
-  var perms={dueno:["usuarios","auditoria"],admin:["usuarios"]};
-  var rol=ST.perfil?ST.perfil.rol:"vendedor";
-  if(tab==="usuarios")return rol==="dueno"||rol==="admin";
-  return true;
+async function toggleDisponible(id, estadoActual){
+  var nuevo=estadoActual==="Disponible"?"Sin stock":"Disponible";
+  try{
+    await db.collection("catalogo").doc(id).update({disponible:nuevo});
+    var idx=ST.catalogo.findIndex(function(x){return x.id===id;});
+    if(idx>=0)ST.catalogo[idx].disponible=nuevo;
+    render();
+    toast(nuevo==="Disponible"?"✅ Marcado disponible":"❌ Marcado sin stock","#3B82F6");
+  }catch(e){toast("Error: "+e.message,R);}
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -813,6 +775,8 @@ function renderModal(){
     case"nuevoCobro":     return modalNuevoCobro();
     case"nuevoGasto":     return modalNuevoGasto();
     case"nuevoProducto":  return modalNuevoProducto();
+    case"editProducto":   return modalEditProducto();
+    case"cobrarPedido":   return renderModalCobrarPedido();
     case"nuevoProspecto": return modalNuevoProspecto();
     case"nuevoRuta":      return modalNuevoRuta(m.diaSel);
     case"nuevaDev":       return modalNuevaDev();
@@ -831,6 +795,57 @@ function ov(content,full){
 function mh(t){return'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;"><h2 style="font-size:20px;font-weight:800;color:'+N+';margin:0;">'+t+'</h2><button onclick="setState({modal:null})" style="background:'+S+';border:none;border-radius:10px;padding:8px 12px;cursor:pointer;font-size:18px;">✕</button></div>';}
 function inp(id,label,type,ph,val,req){type=type||"text";ph=ph||"";val=val||"";return'<div style="margin-bottom:16px;"><label style="font-size:14px;font-weight:600;color:'+N+';display:block;margin-bottom:8px;">'+label+(req?' <span style="color:'+R+'">*</span>':"")+' </label><input id="'+id+'" type="'+type+'" placeholder="'+h(ph)+'" value="'+h(val)+'" style="width:100%;border:2px solid #E2E8F0;border-radius:12px;padding:14px 16px;font-size:16px;outline:none;"/></div>';}
 function sel(id,label,ops,selVal){selVal=selVal||"";return'<div style="margin-bottom:16px;"><label style="font-size:14px;font-weight:600;color:'+N+';display:block;margin-bottom:8px;">'+label+'</label><select id="'+id+'" style="width:100%;border:2px solid #E2E8F0;border-radius:12px;padding:14px 16px;font-size:16px;outline:none;background:'+W+';">'+ops.map(function(o){return'<option value="'+h(o.v)+'"'+(o.v===selVal?" selected":"")+'>'+h(o.l)+'</option>';}).join("")+'</select></div>';}
+function selCliente(id,label){
+  var opsList=ST.clientes.slice().sort(function(a,b){return(a.nombre||"").localeCompare(b.nombre||"");}).map(function(c){
+    var nom=h(c.nombre||"");
+    var enc=c.encargado?'<span style="font-size:12px;color:#94A3B8;display:block;">'+h(c.encargado)+'</span>':"";
+    return'<div data-nombre="'+nom+'" onmousedown="elegirCliente(event,\''+id+'\',this.getAttribute(\'data-nombre\'))" ontouchend="elegirCliente(event,\''+id+'\',this.getAttribute(\'data-nombre\'))" style="padding:12px 16px;font-size:15px;cursor:pointer;border-bottom:1px solid #F1F5F9;font-weight:500;color:#0F172A;">'+nom+enc+'</div>';
+  }).join("");
+  return '<div style="margin-bottom:16px;position:relative;" id="wrap_'+id+'">'+
+    '<label style="font-size:14px;font-weight:600;color:'+N+';display:block;margin-bottom:8px;">'+label+'</label>'+
+    '<input id="'+id+'_txt" placeholder="Escribí el nombre del cliente..." '+
+    'oninput="filtrarSelCliente(\''+id+'\',this.value)" '+
+    'onmousedown="mostrarDropCliente(\''+id+'\')" '+
+    'ontouchstart="mostrarDropCliente(\''+id+'\')" '+
+    'autocomplete="off" autocorrect="off" spellcheck="false" '+
+    'style="width:100%;border:2px solid #E2E8F0;border-radius:12px;padding:14px 16px;font-size:16px;outline:none;background:#fff;box-sizing:border-box;"/>'+
+    '<input type="hidden" id="'+id+'"/>'+
+    '<div id="'+id+'_drop" style="display:none;position:absolute;z-index:9999;background:#fff;border:2px solid #3B82F6;border-radius:12px;max-height:200px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,0.18);width:100%;top:100%;left:0;">'+
+    opsList+
+    '</div>'+
+  '</div>';
+}
+function mostrarDropCliente(id){
+  var d=document.getElementById(id+"_drop");
+  if(d){d.style.display="block";}
+}
+function filtrarSelCliente(id,q){
+  var d=document.getElementById(id+"_drop");
+  if(!d)return;
+  d.style.display="block";
+  var items=d.querySelectorAll("div");
+  q=q.toLowerCase();
+  items.forEach(function(el){
+    el.style.display=el.textContent.toLowerCase().indexOf(q)>=0?"block":"none";
+  });
+}
+function elegirCliente(e,id,nombre){
+  if(e&&e.preventDefault)e.preventDefault();
+  var txt=document.getElementById(id+"_txt");
+  var hid=document.getElementById(id);
+  var drp=document.getElementById(id+"_drop");
+  if(txt)txt.value=nombre;
+  if(hid)hid.value=nombre;
+  if(drp)drp.style.display="none";
+}
+document.addEventListener("click",function(e){
+  var drops=document.querySelectorAll("[id$=\"_drop\"]");
+  drops.forEach(function(d){
+    var wrpId=d.id.replace("_drop","");
+    var wrp=document.getElementById("wrap_"+wrpId);
+    if(wrp&&!wrp.contains(e.target))d.style.display="none";
+  });
+});
 function sbtn(fn,label,c){return'<button onclick="'+fn+'" style="width:100%;background:'+(c||N)+';border:none;border-radius:16px;padding:16px;font-size:18px;font-weight:700;color:'+W+';cursor:pointer;margin-top:8px;">'+label+'</button>';}
 
 function modalNuevoCliente(){return ov(mh("➕ Nuevo Cliente")+inp("nc_nom","Nombre del negocio","text","Bar El Tonel","",true)+inp("nc_enc","Encargado","text","Carlos Méndez","",true)+inp("nc_tel","Teléfono","tel","099-000-0000","",true)+inp("nc_zona","Zona / Barrio","text","Norte, Centro, Sur")+inp("nc_dir","Dirección","text","Av. Quito frente al parque")+inp("nc_dia","Día de visita","text","Lunes")+inp("nc_aniv","Aniversario del negocio","date")+sel("nc_precio","Tipo de precio",[{v:"C",l:"Precio C — Normal"},{v:"B",l:"Precio B — Estándar"},{v:"A",l:"Precio A — Mayor volumen"}])+sel("nc_origen","Origen",[{v:"Ecuador",l:"🇪🇨 Ecuador"},{v:"Colombia",l:"🇨🇴 Colombia"},{v:"Peru",l:"🇵🇪 Perú"}])+sel("nc_estado","Estado",[{v:"activo",l:"✅ Activo"},{v:"pendiente",l:"⚠️ Pendiente"},{v:"inactivo",l:"🔴 Inactivo"}])+'<div style="margin-bottom:16px;"><label style="font-size:14px;font-weight:600;color:'+N+';display:block;margin-bottom:8px;">Notas</label><textarea id="nc_notas" placeholder="Info adicional..." style="width:100%;border:2px solid #E2E8F0;border-radius:12px;padding:14px 16px;font-size:16px;outline:none;resize:none;height:80px;"></textarea></div>'+sbtn("guardarCliente()","✅ Guardar cliente",N),true);}
@@ -846,7 +861,7 @@ function modalNuevoPedido(){
   },50);
   return ov(
     mh("📦 Nuevo Pedido")+
-    sel("np_cli","Cliente *",[{v:"",l:"Seleccionar..."}].concat(ST.clientes.map(function(c){return{v:c.nombre,l:c.nombre};})))+
+    selCliente("np_cli","Cliente *")+
     inp("np_monto","Monto total ($) *","number","0.00","",true)+
     inp("np_fac","N° Factura","text","FAC-001")+
     sel("np_pago","Forma de pago",[{v:"Efectivo",l:"💵 Efectivo"},{v:"Transferencia",l:"📱 Transferencia"},{v:"Credito",l:"📋 Crédito"},{v:"Cheque",l:"📄 Cheque"}])+
@@ -880,17 +895,17 @@ function modalFirma(m){return'<div style="position:fixed;inset:0;background:rgba
 
 function modalAbono(m){return ov(mh("💰 Abonar")+'<div style="background:'+S+';border-radius:14px;padding:14px 16px;margin-bottom:20px;"><p style="font-size:16px;font-weight:700;color:'+N+';margin:0 0 4px;">'+h(m.cobroCli||"")+'</p><p style="font-size:14px;color:#64748B;margin:0;">Saldo: <strong style="color:'+R+';">$'+(m.cobroSaldo||0)+'</strong></p></div>'+inp("ab_monto","Monto del abono ($) *","number","0.00","",true)+sel("ab_pago","Forma de pago",[{v:"Efectivo",l:"💵 Efectivo"},{v:"Transferencia",l:"📱 Transferencia"},{v:"Cheque",l:"📄 Cheque"}])+inp("ab_obs","Observaciones","text","Referencia, número de transferencia...")+sbtn("registrarAbono('"+m.cobroId+"',"+m.cobroSaldo+")","💰 Registrar abono",A));}
 
-function modalNuevoCobro(){return ov(mh("💰 Nuevo Cobro")+sel("nc2_cli","Cliente *",[{v:"",l:"Seleccionar..."}].concat(ST.clientes.map(function(c){return{v:c.nombre,l:c.nombre};})))+inp("nc2_factura","N° Factura / Doc. No.","text","Ej: 001-001-000001234")+inp("nc2_monto","Monto ($) *","number","0.00","",true)+sel("nc2_tipo","Tipo",[{v:"Contado",l:"💵 Contado"},{v:"Credito",l:"📋 Crédito"},{v:"Cheque",l:"📄 Cheque"},{v:"Transferencia",l:"📱 Transferencia"}])+inp("nc2_vence","Fecha de vencimiento *","date","","",true)+sbtn("guardarCobro()","✅ Guardar",G));}
+function modalNuevoCobro(){return ov(mh("💰 Nuevo Cobro")+selCliente("nc2_cli","Cliente *")+inp("nc2_factura","N° Factura / Doc. No.","text","Ej: 001-001-000001234")+inp("nc2_monto","Monto ($) *","number","0.00","",true)+sel("nc2_tipo","Tipo",[{v:"Contado",l:"💵 Contado"},{v:"Credito",l:"📋 Crédito"},{v:"Cheque",l:"📄 Cheque"},{v:"Transferencia",l:"📱 Transferencia"}])+inp("nc2_vence","Fecha de vencimiento *","date","","",true)+sbtn("guardarCobro()","✅ Guardar",G));}
 
 function modalNuevoGasto(){return ov(mh("💸 Nuevo Gasto")+sel("ng_tipo","Tipo",[{v:"⛽ Combustible",l:"⛽ Combustible"},{v:"📱 Celular",l:"📱 Celular"},{v:"🅿️ Parqueo",l:"🅿️ Parqueo"},{v:"🍽️ Alimentación",l:"🍽️ Alimentación"},{v:"🔧 Mantenimiento",l:"🔧 Mantenimiento"},{v:"Otro",l:"Otro"}])+inp("ng_desc","Descripción *","text","Carga gasolina ruta norte","",true)+inp("ng_monto","Monto ($) *","number","0.00","",true)+inp("ng_fecha","Fecha *","date","","",true)+sel("ng_comp","¿Tenés comprobante?",[{v:"No",l:"No"},{v:"Sí",l:"Sí, tengo factura"}])+sbtn("guardarGasto()","✅ Guardar gasto","#374151"));}
 
 function modalNuevoProducto(){return ov(mh("🧴 Nuevo Producto")+inp("np2_nom","Nombre *","text","Ron Del Rio 750ml","",true)+sel("np2_cat","Categoría",[{v:"Cerveza",l:"🍺 Cerveza"},{v:"Vino",l:"🍷 Vino"},{v:"Aguardiente",l:"Aguardiente"},{v:"Ron",l:"Ron"},{v:"Whisky",l:"Whisky"},{v:"Tequila",l:"Tequila"},{v:"Vodka",l:"Vodka"},{v:"Ginebra",l:"Ginebra"},{v:"Champagne",l:"🍾 Champagne"},{v:"Coctelería",l:"Coctelería"},{v:"Otro",l:"Otro"}])+inp("np2_pres","Presentación","text","Botella 750ml")+inp("np2_pa","Precio A ($)","number","0.00")+inp("np2_pb","Precio B ($)","number","0.00")+inp("np2_pc","Precio C ($)","number","0.00")+sel("np2_disp","Disponibilidad",[{v:"Disponible",l:"✅ Disponible"},{v:"Poco stock",l:"⚠️ Poco stock"},{v:"Sin stock",l:"❌ Sin stock"}])+sel("np2_orig","Origen",[{v:"Ecuador",l:"🇪🇨 Ecuador"},{v:"Colombia",l:"🇨🇴 Colombia"},{v:"Peru",l:"🇵🇪 Perú"}])+sel("np2_prom","¿En promoción?",[{v:"No",l:"No"},{v:"Sí",l:"🔥 Sí"}])+sbtn("guardarProducto()","✅ Guardar","#7B241C"),true);}
 
-function modalNuevoProspecto(){return ov(mh("🆕 Nuevo Prospecto")+inp("npr_nom","Negocio *","text","","",true)+inp("npr_cont","Contacto *","text","","",true)+inp("npr_tel","Teléfono","tel","")+inp("npr_zona","Zona","text","")+sel("npr_tipo","Tipo",[{v:"Bar",l:"🍺 Bar"},{v:"Restaurante",l:"🍽️ Restaurante"},{v:"Hotel",l:"Hotel"},{v:"Discoteca",l:"Discoteca"},{v:"Minimarket",l:"Minimarket"},{v:"Tienda",l:"Tienda"},{v:"Otro",l:"Otro"}])+sel("npr_est","Estado",[{v:"📞 Por contactar",l:"📞 Por contactar"},{v:"🔥 Interesado",l:"🔥 Interesado"},{v:"🤝 En negociación",l:"🤝 En negociación"}])+inp("npr_paso","Próximo paso","text","Llamar esta semana...")+sbtn("guardarProspecto()","✅ Guardar","#B7770D"));}
+function modalNuevoProspecto(){return ov(mh("🆕 Nuevo Prospecto")+inp("npr_nom","Negocio *","text","","",true)+inp("npr_dueno","Nombre del dueño","text","Ej: Carlos Ramírez")+inp("npr_cont","Contacto / Referido","text","","",false)+inp("npr_tel","Teléfono","tel","")+inp("npr_zona","Zona","text","")+sel("npr_tipo","Tipo",[{v:"Bar",l:"🍺 Bar"},{v:"Restaurante",l:"🍽️ Restaurante"},{v:"Hotel",l:"Hotel"},{v:"Discoteca",l:"Discoteca"},{v:"Minimarket",l:"Minimarket"},{v:"Tienda",l:"Tienda"},{v:"Otro",l:"Otro"}])+sel("npr_est","Estado",[{v:"📞 Por contactar",l:"📞 Por contactar"},{v:"🔥 Interesado",l:"🔥 Interesado"},{v:"🤝 En negociación",l:"🤝 En negociación"}])+inp("npr_paso","Próximo paso","text","Llamar esta semana...")+sbtn("guardarProspecto()","✅ Guardar","#B7770D"));}
 
-function modalNuevoRuta(dia){return ov(mh("🗺️ Agregar a Ruta")+sel("nr_dia","Día",[{v:"Lunes",l:"Lunes"},{v:"Martes",l:"Martes"},{v:"Miércoles",l:"Miércoles"},{v:"Jueves",l:"Jueves"},{v:"Viernes",l:"Viernes"},{v:"Sábado",l:"Sábado"}],dia||"")+sel("nr_cli","Cliente",[{v:"",l:"Seleccionar..."}].concat(ST.clientes.map(function(c){return{v:c.nombre,l:c.nombre};})))+inp("nr_hora","Hora","time","")+sbtn("guardarRuta()","✅ Agregar","#1A5276"));}
+function modalNuevoRuta(dia){return ov(mh("🗺️ Agregar a Ruta")+sel("nr_dia","Día",[{v:"Lunes",l:"Lunes"},{v:"Martes",l:"Martes"},{v:"Miércoles",l:"Miércoles"},{v:"Jueves",l:"Jueves"},{v:"Viernes",l:"Viernes"},{v:"Sábado",l:"Sábado"}],dia||"")+selCliente("nr_cli","Cliente")+inp("nr_hora","Hora","time","")+sbtn("guardarRuta()","✅ Agregar","#1A5276"));}
 
-function modalNuevaDev(){return ov(mh("📷 Nueva Devolución")+sel("nd_cli","Cliente",[{v:"",l:"Seleccionar..."}].concat(ST.clientes.map(function(c){return{v:c.nombre,l:c.nombre};})))+inp("nd_prod","Producto *","text","","",true)+inp("nd_cant","Cantidad","number","1")+inp("nd_monto","Monto ($) *","number","0.00","",true)+inp("nd_motivo","Motivo *","text","","",true)+inp("nd_sol","Solución acordada","text","")+sel("nd_est","Estado",[{v:"⏳ Pendiente",l:"⏳ Pendiente"},{v:"✅ Resuelto",l:"✅ Resuelto"}])+sbtn("guardarDevolucion()","✅ Registrar",R));}
+function modalNuevaDev(){return ov(mh("📷 Nueva Devolución")+selCliente("nd_cli","Cliente")+inp("nd_prod","Producto *","text","","",true)+inp("nd_cant","Cantidad","number","1")+inp("nd_monto","Monto ($) *","number","0.00","",true)+inp("nd_motivo","Motivo *","text","","",true)+inp("nd_sol","Solución acordada","text","")+sel("nd_est","Estado",[{v:"⏳ Pendiente",l:"⏳ Pendiente"},{v:"✅ Resuelto",l:"✅ Resuelto"}])+sbtn("guardarDevolucion()","✅ Registrar",R));}
 
 function modalNuevoUsuario(){return ov(mh("👤 Nuevo Usuario")+inp("nu_nombre","Nombre completo *","text","","",true)+inp("nu_email","Correo *","email","","",true)+inp("nu_pass","Contraseña temporal *","password","Mínimo 8 caracteres","",true)+sel("nu_rol","Rol",[{v:"vendedor",l:"🚗 Vendedor"},{v:"admin",l:"📊 Administradora"},{v:"bodega",l:"📦 Bodega"},{v:"dueno",l:"👑 Dueño"}])+'<div style="background:#FEF9C3;border-radius:12px;padding:12px 16px;margin-bottom:16px;"><p style="font-size:13px;color:#854D0E;margin:0;">⚠️ El usuario tendrá acceso inmediato. Compartí las credenciales de forma segura.</p></div>'+sbtn("crearUsuario()","✅ Crear usuario",P),true);}
 
@@ -1000,6 +1015,8 @@ function exportarClientes(){
 
 // PEDIDOS
 async function guardarPedido(){
+  if(ST._guardandoPedido){toast("Guardando, esperá...",A);return;}
+  ST._guardandoPedido=true;
   var cli=val("np_cli"),monto=parseFloat(val("np_monto")||0);
   var sistema=val("np_sistema")||"Perseo";
   var prod,prodNac="",prodImp="";
@@ -1023,7 +1040,7 @@ async function guardarPedido(){
     });
     await audit("Nuevo pedido","Pedidos","Para: "+cli+" $"+monto,1);
     toast("✅ Pedido guardado",G);setState({modal:null});await cargarTodo();
-  }catch(e){toast("Error: "+e.message,R);}
+  }catch(e){toast("Error: "+e.message,R);}finally{ST._guardandoPedido=false;}
 }
 
 async function cambiarEstado(id,estado){
@@ -1189,12 +1206,57 @@ async function guardarProducto(){
   }catch(e){toast("Error: "+e.message,R);}
 }
 
+function modalEditProducto(){
+  var p=ST.modal&&ST.modal.prod;
+  if(!p)return ov(mh("✏️ Editar Producto")+'<p>Producto no encontrado</p>');
+  return ov(
+    mh("✏️ Editar Producto")+
+    '<p style="font-size:12px;color:#94A3B8;margin-bottom:12px;">Código: '+h(p.codigo||"")+'</p>'+
+    inp("ep_nom","Nombre *","text",p.nombre,p.nombre,true)+
+    sel("ep_cat","Categoría",[
+      {v:"Licores",l:"Licores"},{v:"Bebidas",l:"Bebidas"},{v:"Cerveza",l:"🍺 Cerveza"},
+      {v:"Confitería",l:"Confitería"},{v:"Snack",l:"Snack"},{v:"Helados",l:"🍦 Helados"},
+      {v:"Coctelería",l:"Coctelería"},{v:"General",l:"General"},{v:"Otro",l:"Otro"}
+    ],p.categoria)+
+    inp("ep_pa","Precio A ($)","number","0.00",String(p.precioA||0))+
+    inp("ep_pb","Precio B ($)","number","0.00",String(p.precioB||0))+
+    inp("ep_pc","Precio C ($) ★","number","0.00",String(p.precioC||0),true)+
+    sel("ep_disp","Disponibilidad",[{v:"Disponible",l:"✅ Disponible"},{v:"Sin stock",l:"❌ Sin stock"}],p.disponible)+
+    sbtn("actualizarProducto('"+p.id+"')","💾 Guardar cambios","#7B241C")
+  );
+}
+
+async function actualizarProducto(id){
+  var nom=val("ep_nom");
+  if(!nom){toast("Ingresá el nombre",R);return;}
+  try{
+    await db.collection("catalogo").doc(id).update({
+      nombre:nom,
+      categoria:val("ep_cat")||"General",
+      precioA:parseFloat(val("ep_pa")||0),
+      precioB:parseFloat(val("ep_pb")||0),
+      precioC:parseFloat(val("ep_pc")||0),
+      disponible:val("ep_disp")||"Disponible"
+    });
+    var idx=ST.catalogo.findIndex(function(x){return x.id===id;});
+    if(idx>=0){
+      ST.catalogo[idx].nombre=nom;
+      ST.catalogo[idx].categoria=val("ep_cat")||"General";
+      ST.catalogo[idx].precioA=parseFloat(val("ep_pa")||0);
+      ST.catalogo[idx].precioB=parseFloat(val("ep_pb")||0);
+      ST.catalogo[idx].precioC=parseFloat(val("ep_pc")||0);
+      ST.catalogo[idx].disponible=val("ep_disp")||"Disponible";
+    }
+    toast("✅ Producto actualizado",G);setState({modal:null});render();
+  }catch(e){toast("Error: "+e.message,R);}
+}
+
 // PROSPECTOS
 async function guardarProspecto(){
-  var nom=val("npr_nom"),cont=val("npr_cont");
-  if(!nom||!cont){toast("Completá los campos obligatorios",R);return;}
+  var nom=val("npr_nom");
+  if(!nom){toast("Completá el nombre del negocio",R);return;}
   try{
-    await db.collection("prospectos").add({nombre:nom,contacto:cont,tel:val("npr_tel"),zona:val("npr_zona"),tipo:val("npr_tipo")||"Otro",estado:val("npr_est")||"📞 Por contactar",proximoPaso:val("npr_paso"),primerContacto:new Date().toLocaleDateString("es-EC"),ts:firebase.firestore.FieldValue.serverTimestamp()});
+    await db.collection("prospectos").add({nombre:nom,dueno:val("npr_dueno"),contacto:val("npr_cont"),tel:val("npr_tel"),zona:val("npr_zona"),tipo:val("npr_tipo")||"Otro",estado:val("npr_est")||"📞 Por contactar",proximoPaso:val("npr_paso"),primerContacto:new Date().toLocaleDateString("es-EC"),ts:firebase.firestore.FieldValue.serverTimestamp()});
     await audit("Nuevo prospecto","Prospectos","Se agregó: "+nom,1);
     toast("✅ Prospecto agregado",G);setState({modal:null});await cargarTodo();
   }catch(e){toast("Error: "+e.message,R);}
