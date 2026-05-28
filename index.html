@@ -299,19 +299,59 @@ function htmlRuta(){
   var zonas=["Todos","Centro","Norte","Sur","Oriente","Vía Quito","Lago Agrio","Otra"];
   var diasFiltro=["Hoy","Todos","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"];
 
+  var hoyStr=fmtF();
+  var pedidosHoy=ST.pedidos.filter(p=>p.fecha===hoyStr);
+  var cobradoHoy=ST.pedidos
+    .filter(p=>p.fechaCobro===hoyStr)
+    .reduce((s,p)=>s+(p.montoCobrado||0),0);
+  var mesNow=new Date();
+  var pedidosMes=ST.pedidos.filter(p=>{
+    var pts=(p.fecha||"").split("/");
+    return pts.length===3&&parseInt(pts[1])===mesNow.getMonth()+1&&parseInt(pts[2])===mesNow.getFullYear();
+  });
+  var ventasMes=pedidosMes.reduce((s,p)=>s+(p.montoConIVA||p.monto||0),0);
+
   return`<div class="fade">
-  <div style="background:${CN};padding:22px 16px 14px;">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+  <div style="background:linear-gradient(160deg,${CN} 60%,${CN2});padding:20px 16px 14px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
       <div>
-        <div style="font-size:11px;color:rgba(255,255,255,0.55);text-transform:uppercase;letter-spacing:0.5px;">
-          ${fmtF()}</div>
-        <div style="font-size:20px;font-weight:800;color:${CW};">
-          ${h(ST.perfil?.nombre?.split(" ")[0]||"Vendedor")} 👋</div>
+        <div style="font-size:10px;color:rgba(255,255,255,0.55);text-transform:uppercase;letter-spacing:0.8px;">
+          ${hoyDia} ${hoyStr}</div>
+        <div style="font-size:21px;font-weight:800;color:${CW};">
+          Hola, ${h(ST.perfil?.nombre?.split(" ")[0]||"Vendedor")} 👋</div>
       </div>
       <button onclick="setState({modal:{tipo:'nuevoCliente'}})"
-        style="background:${CB};border:none;border-radius:11px;padding:9px 14px;
-        color:${CW};font-weight:700;font-size:13px;cursor:pointer;">+ Cliente</button>
+        style="background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.25);
+        border-radius:11px;padding:8px 13px;color:${CW};font-weight:700;font-size:12px;cursor:pointer;">
+        + Cliente</button>
     </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;">
+      <div style="background:rgba(255,255,255,0.12);border-radius:13px;padding:12px;">
+        <div style="font-size:24px;font-weight:800;color:${CW};">${pedidosHoy.length}</div>
+        <div style="font-size:10px;color:rgba(255,255,255,0.65);margin-top:2px;">PEDIDOS HOY</div>
+      </div>
+      <div style="background:rgba(255,255,255,0.12);border-radius:13px;padding:12px;">
+        <div style="font-size:18px;font-weight:800;color:#4ADE80;">${fmtM(cobradoHoy)}</div>
+        <div style="font-size:10px;color:rgba(255,255,255,0.65);margin-top:2px;">COBRADO HOY</div>
+      </div>
+      <div style="background:rgba(255,255,255,0.12);border-radius:13px;padding:12px;">
+        <div style="font-size:24px;font-weight:800;color:${CW};">${pedidosMes.length}</div>
+        <div style="font-size:10px;color:rgba(255,255,255,0.65);margin-top:2px;">PEDIDOS MES</div>
+      </div>
+      <div style="background:rgba(255,255,255,0.12);border-radius:13px;padding:12px;">
+        <div style="font-size:17px;font-weight:800;color:#FCD34D;">${fmtM(ventasMes)}</div>
+        <div style="font-size:10px;color:rgba(255,255,255,0.65);margin-top:2px;">VENTAS MES</div>
+      </div>
+    </div>
+
+    <button onclick="setState({tab:'catalogo'})"
+      style="width:100%;background:${CB};border:none;border-radius:13px;padding:13px;
+      color:${CW};font-size:15px;font-weight:800;cursor:pointer;margin-bottom:12px;
+      display:flex;align-items:center;justify-content:center;gap:8px;">
+      🛒 Nuevo Pedido
+    </button>
+
     <div style="position:relative;">
       <span style="position:absolute;left:13px;top:50%;transform:translateY(-50%);font-size:15px;">🔍</span>
       <input id="s_ruta" type="text" placeholder="Buscar cliente o encargado..."
@@ -1098,11 +1138,21 @@ function htmlModal(){
   </div>`;
 }
 
+function mHeader(title){
+  return`<div style="width:36px;height:4px;background:#E2E8F0;border-radius:2px;margin:0 auto 16px;"></div>
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+    <h3 style="font-size:17px;font-weight:800;color:${CN};margin:0;">${title}</h3>
+    <button onclick="setState({modal:null})"
+      style="background:#F1F5F9;border:none;border-radius:9px;padding:6px 12px;
+      font-size:16px;cursor:pointer;color:#64748B;font-weight:700;line-height:1;">✕</button>
+  </div>`;
+}
+
 // modal: tarifas ──────────────────────────────────────────────────
 function mTarifas(prod){
   var act=ST.clienteActivo?.precio||"C";
-  return`<h3 style="font-size:17px;font-weight:800;color:${CN};margin-bottom:4px;">${h(prod.nombre)}</h3>
-  <p style="font-size:12px;color:#64748B;margin-bottom:14px;">${h(prod.codigo||"")} · ${h(prod.categoria||"")}</p>
+  return`${mHeader("Tarifas — "+h(prod.nombre))}
+  <p style="font-size:12px;color:#64748B;margin-top:-10px;margin-bottom:14px;">${h(prod.codigo||"")} · ${h(prod.categoria||"")}</p>
   ${[["A","A (Mayor precio)"],["B","B"],["C","C (Estándar)"]].map(([k,label])=>{
     var precio=getPrecio(prod,k);
     var isAct=act===k;
@@ -1123,8 +1173,8 @@ function mTarifas(prod){
 
 // modal: cobrar ───────────────────────────────────────────────────
 function mCobrar(p){
-  return`<h3 style="font-size:17px;font-weight:800;color:${CN};margin-bottom:3px;">Registrar Cobro</h3>
-  <p style="font-size:13px;color:#64748B;margin-bottom:4px;">${h(p.cliente)}</p>
+  return`${mHeader("Registrar Cobro")}
+  <p style="font-size:13px;color:#64748B;margin-top:-10px;margin-bottom:4px;">${h(p.cliente)}</p>
   <p style="font-size:22px;font-weight:800;color:${CR};margin-bottom:16px;">Saldo: ${fmtM(p.saldoPendiente)}</p>
   <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:6px;">Monto cobrado</label>
   <input id="cb_m" type="number" step="0.01" value="${(p.saldoPendiente||0).toFixed(2)}"
@@ -1199,7 +1249,7 @@ async function procesarCobro(id){
 // modal: guardar pedido ───────────────────────────────────────────
 function mGuardarPedido(){
   var sub=ST.carrito.reduce((s,i)=>s+i.subtotal,0);
-  return`<h3 style="font-size:17px;font-weight:800;color:${CN};margin-bottom:14px;">Confirmar Pedido</h3>
+  return`${mHeader("Confirmar Pedido")}
   <div style="background:#F8FAFC;border-radius:11px;padding:12px;margin-bottom:14px;">
     <div style="font-size:12px;color:#64748B;">Cliente</div>
     <div style="font-size:15px;font-weight:700;color:${CN};">${h(ST.clienteActivo?.nombre||"")}</div>
@@ -1314,7 +1364,7 @@ function camposCl(pre){
 }
 
 function mNuevoCliente(){
-  return`<h3 style="font-size:17px;font-weight:800;color:${CN};margin-bottom:14px;">Nuevo Cliente</h3>
+  return`${mHeader("Nuevo Cliente")}
   ${camposCl(null)}
   <button onclick="guardarNuevoCliente()"
     style="width:100%;background:${CG};border:none;border-radius:13px;padding:14px;
@@ -1337,7 +1387,7 @@ async function guardarNuevoCliente(){
 }
 
 function mEditarCliente(c){
-  return`<h3 style="font-size:17px;font-weight:800;color:${CN};margin-bottom:14px;">Editar Cliente</h3>
+  return`${mHeader("Editar Cliente")}
   ${camposCl(c)}
   <button onclick="actualizarCliente('${c.id}')"
     style="width:100%;background:${CB};border:none;border-radius:13px;padding:14px;
@@ -1418,7 +1468,7 @@ function calcPrecios(costo){
 }
 
 function mNuevoProducto(){
-  return`<h3 style="font-size:17px;font-weight:800;color:${CN};margin-bottom:14px;">Nuevo Producto</h3>
+  return`${mHeader("Nuevo Producto")}
   ${camposProd(null)}
   <button onclick="guardarNuevoProducto()"
     style="width:100%;background:${CG};border:none;border-radius:13px;padding:14px;
@@ -1442,7 +1492,7 @@ async function guardarNuevoProducto(){
 }
 
 function mEditarProducto(p){
-  return`<h3 style="font-size:17px;font-weight:800;color:${CN};margin-bottom:14px;">Editar Producto</h3>
+  return`${mHeader("Editar Producto")}
   ${camposProd(p)}
   <button onclick="actualizarProducto('${p.id}')"
     style="width:100%;background:${CB};border:none;border-radius:13px;padding:14px;
@@ -1470,7 +1520,7 @@ async function actualizarProducto(id){
 
 // modal: prospecto ────────────────────────────────────────────────
 function mNuevoProspecto(){
-  return`<h3 style="font-size:17px;font-weight:800;color:${CN};margin-bottom:14px;">Nuevo Prospecto</h3>
+  return`${mHeader("Nuevo Prospecto")}
   <div style="margin-bottom:12px;">
     <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Nombre del negocio *</label>
     <input id="pr_nom" type="text" placeholder="Nombre"
@@ -1527,7 +1577,7 @@ async function guardarProspecto(){
 
 // modal: gasto ────────────────────────────────────────────────────
 function mNuevoGasto(){
-  return`<h3 style="font-size:17px;font-weight:800;color:${CN};margin-bottom:14px;">Registrar Gasto</h3>
+  return`${mHeader("Registrar Gasto")}
   <div style="margin-bottom:12px;">
     <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Tipo</label>
     <select id="ga_tipo" style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:14px;outline:none;background:${CW};">
@@ -1563,7 +1613,7 @@ async function guardarGasto(){
 
 // modal: devolución ───────────────────────────────────────────────
 function mNuevaDev(){
-  return`<h3 style="font-size:17px;font-weight:800;color:${CN};margin-bottom:14px;">Nueva Devolución</h3>
+  return`${mHeader("Nueva Devolución")}
   <div style="margin-bottom:12px;">
     <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Cliente *</label>
     <input id="dv_cli" type="text" placeholder="Nombre del negocio"
