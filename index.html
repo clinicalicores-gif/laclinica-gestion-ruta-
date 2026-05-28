@@ -62,7 +62,15 @@ var ST={
 function $(i){return document.getElementById(i);}
 function val(i,d){var e=$(i);return e?e.value.trim():(d||"");}
 function h(s){return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
-function render(){var r=$("root");if(r)r.innerHTML=buildHTML();}
+function render(){
+  var r=$("root");if(!r)return;
+  var ae=document.activeElement;
+  var fid=ae&&ae.id?ae.id:null;
+  var ss=ae&&ae.selectionStart!=null?ae.selectionStart:null;
+  var se=ae&&ae.selectionEnd!=null?ae.selectionEnd:null;
+  r.innerHTML=buildHTML();
+  if(fid){var el=$(fid);if(el){el.focus();if(ss!=null){try{el.setSelectionRange(ss,se);}catch(e){}}}}
+}
 function setState(o){Object.assign(ST,o);render();}
 
 function toast(msg,color,dur){
