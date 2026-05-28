@@ -281,7 +281,7 @@ function htmlRuta(){
     <div style="position:relative;">
       <span style="position:absolute;left:13px;top:50%;transform:translateY(-50%);font-size:15px;">🔍</span>
       <input id="s_ruta" type="text" placeholder="Buscar cliente o encargado..."
-        value="${h(ST.search)}" oninput="setState({search:this.value})"
+        value="${h(ST.search)}" oninput="debRuta(this.value)"
         style="width:100%;background:rgba(255,255,255,0.1);border:none;border-radius:11px;
         padding:11px 13px 11px 38px;color:${CW};font-size:14px;outline:none;"/>
     </div>
@@ -309,7 +309,7 @@ function htmlRuta(){
     </div>
   </div>
 
-  <div style="padding:0 14px 80px;">
+  <div id="ruta_lista" style="padding:0 14px 80px;">
     ${lista.length===0?`<div style="text-align:center;padding:48px 20px;color:#94A3B8;font-size:15px;">
       ${q?"Sin resultados para &quot;"+h(q)+"&quot;":"No hay clientes en esta zona"}</div>`:""}
     ${lista.map(c=>{
@@ -376,13 +376,7 @@ function htmlCatalogo(){
   var cat=ST.filtroCat||"Todos";
   var cats=["Todos","Licores","Bebidas","Cerveza","Confitería","Snack","Helados","Coctelería","General","Otro"];
 
-  var prods=ST.catalogo.filter(p=>{
-    if(p.disponible==="Sin stock") return false;
-    if(cat!=="Todos"&&p.categoria!==cat) return false;
-    if(q.length>=2&&!(p.nombre||"").toLowerCase().includes(q)&&
-                    !(p.codigo||"").toLowerCase().includes(q)) return false;
-    return true;
-  }).sort((a,b)=>(a.nombre||"").localeCompare(b.nombre||""));
+  var prods=filtrarProds(q,cat);
 
   return`<div class="fade">
   <div style="background:${CN2};padding:14px 14px 0;">
@@ -404,50 +398,128 @@ function htmlCatalogo(){
     </div>
   </div>
 
-  <div style="padding:8px 14px 4px;font-size:12px;color:#64748B;font-weight:500;">
+  <div id="cat_cnt" style="padding:8px 14px 4px;font-size:12px;color:#64748B;font-weight:500;">
     ${prods.length} producto${prods.length!==1?"s":""}
     ${ST.clienteActivo?` · <b style="color:${CN};">Tarifa ${tarifa} activa</b>`:""}
   </div>
 
-  <div style="padding:4px 14px 80px;">
-    ${q.length>0&&q.length<2?`<div style="text-align:center;padding:32px;color:#94A3B8;font-size:14px;">Escribí al menos 2 letras...</div>`:""}
-    ${prods.length===0&&q.length>=2?`<div style="text-align:center;padding:32px;color:#94A3B8;font-size:14px;">Sin resultados para "${h(q)}"</div>`:""}
-    ${prods.map(p=>{
-      var precio=getPrecio(p,tarifa);
-      var en=ST.carrito.find(x=>x.id===p.id);
-      var qty=en?en.cantidad:0;
-      return`<div style="background:${CW};border-radius:13px;padding:12px;margin-bottom:7px;
-        box-shadow:0 1px 3px rgba(0,0,0,0.06);display:flex;align-items:center;gap:10px;">
-        <div style="flex:1;min-width:0;">
-          <div style="font-size:11px;color:#94A3B8;">${h(p.codigo||"")}${p.categoria?" · "+h(p.categoria):""}</div>
-          <div style="font-size:14px;font-weight:700;color:${CN};margin:2px 0;line-height:1.2;">${h(p.nombre)}</div>
-          <div style="display:flex;align-items:center;gap:7px;margin-top:3px;">
-            <span style="font-size:17px;font-weight:800;color:${CG};">${fmtM(precio)}</span>
-            <button onclick="event.stopPropagation();verTarifas('${p.id}')"
-              style="background:#F1F5F9;border:none;border-radius:7px;padding:2px 8px;
-              font-size:10px;color:#64748B;cursor:pointer;font-weight:600;">ver tarifas 👁</button>
-            ${p.sistema?`<span style="font-size:10px;background:${p.sistema==="Perseo"?"#EFF6FF":"#F5F3FF"};
-              color:${p.sistema==="Perseo"?CB:CP};padding:2px 6px;border-radius:5px;font-weight:600;">
-              ${p.sistema}</span>`:""}
-          </div>
-        </div>
-        <div style="display:flex;align-items:center;gap:5px;flex-shrink:0;">
-          ${qty>0?`<button onclick="quitarProd('${p.id}')"
-            style="width:34px;height:34px;border-radius:9px;border:none;background:#FEE2E2;
-            color:${CR};font-size:19px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;">−</button>
-            <span style="font-size:15px;font-weight:800;color:${CN};min-width:22px;text-align:center;">${qty}</span>`:""}
-          <button onclick="agregarProd('${p.id}')"
-            style="width:34px;height:34px;border-radius:9px;border:none;
-            background:${qty>0?"#DCFCE7":CN};color:${CW};font-size:19px;font-weight:700;
-            cursor:pointer;display:flex;align-items:center;justify-content:center;">+</button>
-        </div>
-      </div>`;
-    }).join("")}
+  <div id="cat_prods" style="padding:4px 14px 80px;">
+    ${buildProdCards(prods,tarifa,q)}
   </div>
   </div>`;
 }
 
-function debCat(v){clearTimeout(_catTimer);_catTimer=setTimeout(()=>setState({searchCat:v}),280);}
+function filtrarProds(q,cat){
+  return ST.catalogo.filter(p=>{
+    if(p.disponible==="Sin stock") return false;
+    if((cat||"Todos")!=="Todos"&&p.categoria!==cat) return false;
+    if((q||"").length>=2&&!(p.nombre||"").toLowerCase().includes(q)&&
+                    !(p.codigo||"").toLowerCase().includes(q)) return false;
+    return true;
+  }).sort((a,b)=>(a.nombre||"").localeCompare(b.nombre||""));
+}
+
+function buildProdCards(prods,tarifa,q){
+  var qs=q||"";
+  var out="";
+  if(qs.length>0&&qs.length<2) out+=`<div style="text-align:center;padding:32px;color:#94A3B8;font-size:14px;">Escribí al menos 2 letras...</div>`;
+  if(!prods.length&&qs.length>=2) out+=`<div style="text-align:center;padding:32px;color:#94A3B8;font-size:14px;">Sin resultados para "${h(qs)}"</div>`;
+  out+=prods.map(p=>{
+    var precio=getPrecio(p,tarifa);
+    var en=ST.carrito.find(x=>x.id===p.id);
+    var qty=en?en.cantidad:0;
+    return`<div style="background:${CW};border-radius:13px;padding:12px;margin-bottom:7px;
+      box-shadow:0 1px 3px rgba(0,0,0,0.06);display:flex;align-items:center;gap:10px;">
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:11px;color:#94A3B8;">${h(p.codigo||"")}${p.categoria?" · "+h(p.categoria):""}</div>
+        <div style="font-size:14px;font-weight:700;color:${CN};margin:2px 0;line-height:1.2;">${h(p.nombre)}</div>
+        <div style="display:flex;align-items:center;gap:7px;margin-top:3px;">
+          <span style="font-size:17px;font-weight:800;color:${CG};">${fmtM(precio)}</span>
+          <button onclick="event.stopPropagation();verTarifas('${p.id}')"
+            style="background:#F1F5F9;border:none;border-radius:7px;padding:2px 8px;
+            font-size:10px;color:#64748B;cursor:pointer;font-weight:600;">ver tarifas 👁</button>
+          ${p.sistema?`<span style="font-size:10px;background:${p.sistema==="Perseo"?"#EFF6FF":"#F5F3FF"};
+            color:${p.sistema==="Perseo"?CB:CP};padding:2px 6px;border-radius:5px;font-weight:600;">
+            ${p.sistema}</span>`:""}
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:5px;flex-shrink:0;">
+        ${qty>0?`<button onclick="quitarProd('${p.id}')"
+          style="width:34px;height:34px;border-radius:9px;border:none;background:#FEE2E2;
+          color:${CR};font-size:19px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;">−</button>
+          <span style="font-size:15px;font-weight:800;color:${CN};min-width:22px;text-align:center;">${qty}</span>`:""}
+        <button onclick="agregarProd('${p.id}')"
+          style="width:34px;height:34px;border-radius:9px;border:none;
+          background:${qty>0?"#DCFCE7":CN};color:${CW};font-size:19px;font-weight:700;
+          cursor:pointer;display:flex;align-items:center;justify-content:center;">+</button>
+      </div>
+    </div>`;
+  }).join("");
+  return out;
+}
+
+function debCat(v){
+  clearTimeout(_catTimer);
+  ST.searchCat=v;
+  _catTimer=setTimeout(()=>{
+    var tarifa=ST.clienteActivo?.precio||"C";
+    var q=v.toLowerCase();
+    var cat=ST.filtroCat||"Todos";
+    var prods=filtrarProds(q,cat);
+    var cnt=$("cat_cnt"),el=$("cat_prods");
+    if(cnt) cnt.innerHTML=prods.length+" producto"+(prods.length!==1?"s":"")+
+      (ST.clienteActivo?` · <b style="color:${CN};">Tarifa ${tarifa} activa</b>`:"");
+    if(el) el.innerHTML=buildProdCards(prods,tarifa,q);
+  },280);
+}
+
+var _rutaTimer=null;
+function debRuta(v){
+  clearTimeout(_rutaTimer);
+  ST.search=v;
+  _rutaTimer=setTimeout(()=>{
+    var el=$("ruta_lista");
+    if(!el) return;
+    var q=v.toLowerCase();
+    var zona=ST.filtroZona||"Todos";
+    var lista=ST.clientes.filter(c=>{
+      if(c.estado==="inactivo") return false;
+      if(zona!=="Todos"&&c.zona!==zona) return false;
+      if(q&&!(c.nombre||"").toLowerCase().includes(q)&&
+           !(c.encargado||"").toLowerCase().includes(q)) return false;
+      return true;
+    }).sort((a,b)=>(a.nombre||"").localeCompare(b.nombre||""));
+    el.innerHTML=(lista.length===0?
+      `<div style="text-align:center;padding:48px 20px;color:#94A3B8;font-size:15px;">
+        ${q?"Sin resultados para &quot;"+h(q)+"&quot;":"No hay clientes en esta zona"}</div>`:"")+
+    lista.map(c=>{
+      var activo=ST.clienteActivo?.id===c.id;
+      var deuda=c.pendiente||0;
+      return`<div onclick="selCliente('${c.id}')"
+        style="background:${activo?"#EFF6FF":CW};border:2px solid ${activo?CB:"transparent"};
+        border-radius:15px;padding:13px;margin-bottom:9px;cursor:pointer;
+        box-shadow:0 1px 4px rgba(0,0,0,0.06);display:flex;align-items:center;gap:11px;">
+        <div style="width:42px;height:42px;border-radius:11px;background:${activo?CB:CN};
+          display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <span style="color:${CW};font-size:17px;font-weight:800;">${(c.nombre||"?")[0].toUpperCase()}</span>
+        </div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:14px;font-weight:700;color:${CN};
+            white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${h(c.nombre)}</div>
+          <div style="font-size:11px;color:#64748B;margin-top:1px;">
+            ${h(c.encargado||"")}${c.zona?" · "+h(c.zona):""}</div>
+        </div>
+        <div style="text-align:right;flex-shrink:0;">
+          <div style="background:${CN};color:${CW};border-radius:7px;padding:2px 8px;
+            font-size:11px;font-weight:700;margin-bottom:3px;">Tarifa ${h(c.precio||"C")}</div>
+          ${deuda>0
+            ?`<div style="color:${CR};font-size:11px;font-weight:700;">Debe ${fmtM(deuda)}</div>`
+            :`<div style="color:${CG};font-size:11px;font-weight:600;">Al día ✓</div>`}
+        </div>
+      </div>`;
+    }).join("");
+  },150);
+}
 
 function agregarProd(id){
   if(!ST.clienteActivo){toast("Primero seleccioná un cliente en Mi Ruta",CA);return;}
@@ -977,7 +1049,7 @@ function mTarifas(prod){
   var act=ST.clienteActivo?.precio||"C";
   return`<h3 style="font-size:17px;font-weight:800;color:${CN};margin-bottom:4px;">${h(prod.nombre)}</h3>
   <p style="font-size:12px;color:#64748B;margin-bottom:14px;">${h(prod.codigo||"")} · ${h(prod.categoria||"")}</p>
-  ${[["A","A (Mayor precio)"],["B","B"],["C","C (Estándar)"],["D","D (Mejor precio)"]].map(([k,label])=>{
+  ${[["A","A (Mayor precio)"],["B","B"],["C","C (Estándar)"]].map(([k,label])=>{
     var precio=getPrecio(prod,k);
     var isAct=act===k;
     return`<div style="display:flex;justify-content:space-between;align-items:center;
@@ -1206,7 +1278,13 @@ function camposProd(pre){
     <input id="pd_nom" type="text" placeholder="Nombre del producto" value="${h(pre?.nombre||"")}"
       style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:14px;outline:none;"/>
   </div>
-  <div style="font-size:13px;font-weight:700;color:${CN};margin-bottom:8px;">Precios (A = mayor, D = menor)</div>
+  <div style="margin-bottom:12px;">
+    <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Costo (auto-calcula precios)</label>
+    <input id="pd_costo" type="number" step="0.01" placeholder="0.00" value="${h(pre?.costo||"")}"
+      oninput="calcPrecios(this.value)"
+      style="width:100%;border:2px solid ${CA};border-radius:11px;padding:12px;font-size:16px;font-weight:700;outline:none;"/>
+  </div>
+  <div style="font-size:13px;font-weight:700;color:${CN};margin-bottom:8px;">Precios (A +25% · B +20% · C +16% · D +12%)</div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
     ${["A","B","C","D"].map(t=>`<div>
       <label style="font-size:12px;font-weight:600;color:#64748B;display:block;margin-bottom:4px;">Tarifa ${t}</label>
@@ -1223,6 +1301,13 @@ function camposProd(pre){
   </div>`;
 }
 
+function calcPrecios(costo){
+  var c=parseFloat(costo||0);
+  if(!c||c<=0) return;
+  var mults={pA:1.25,pB:1.20,pC:1.16,pD:1.12};
+  Object.entries(mults).forEach(([id,m])=>{var el=$("pd_"+id);if(el)el.value=(c*m).toFixed(2);});
+}
+
 function mNuevoProducto(){
   return`<h3 style="font-size:17px;font-weight:800;color:${CN};margin-bottom:14px;">Nuevo Producto</h3>
   ${camposProd(null)}
@@ -1235,6 +1320,7 @@ async function guardarNuevoProducto(){
   var nombre=val("pd_nom");
   if(!nombre){toast("El nombre es obligatorio",CR);return;}
   var data={codigo:val("pd_cod"),nombre,categoria:val("pd_cat")||"General",
+    costo:parseFloat(val("pd_costo")||0),
     precioA:parseFloat(val("pd_pA")||0),precioB:parseFloat(val("pd_pB")||0),
     precioC:parseFloat(val("pd_pC")||0),precioD:parseFloat(val("pd_pD")||0),
     sistema:val("pd_sis")||"Perseo",disponible:"Disponible",
@@ -1261,6 +1347,7 @@ async function actualizarProducto(id){
   var nombre=val("pd_nom");
   if(!nombre){toast("El nombre es obligatorio",CR);return;}
   var data={codigo:val("pd_cod"),nombre,categoria:val("pd_cat")||"General",
+    costo:parseFloat(val("pd_costo")||0),
     precioA:parseFloat(val("pd_pA")||0),precioB:parseFloat(val("pd_pB")||0),
     precioC:parseFloat(val("pd_pC")||0),precioD:parseFloat(val("pd_pD")||0),
     sistema:val("pd_sis")||"Perseo",ts:firebase.firestore.FieldValue.serverTimestamp()};
