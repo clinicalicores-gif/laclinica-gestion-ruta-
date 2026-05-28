@@ -76,8 +76,17 @@ function setState(o){Object.assign(ST,o);render();}
 function toast(msg,color,dur){
   clearTimeout(ST.toastT);
   ST.toast={msg,color:color||CG};
-  ST.toastT=setTimeout(()=>{ST.toast=null;render();},dur||3000);
-  render();
+  var te=$("toast_el");
+  if(te){
+    te.textContent=msg;te.style.background=color||CG;te.style.display="";
+    ST.toastT=setTimeout(()=>{
+      ST.toast=null;
+      var t2=$("toast_el");if(t2)t2.style.display="none";
+    },dur||3000);
+  } else {
+    ST.toastT=setTimeout(()=>{ST.toast=null;render();},dur||3000);
+    render();
+  }
 }
 
 function fmtM(n){return"$"+parseFloat(n||0).toFixed(2);}
@@ -174,10 +183,10 @@ function htmlApp(){
 
   return`<div style="min-height:100vh;display:flex;flex-direction:column;background:#F1F5F9;">
 
-  ${ST.toast?`<div style="position:fixed;top:16px;left:50%;transform:translateX(-50%);
+  ${ST.toast?`<div id="toast_el" style="position:fixed;top:16px;left:50%;transform:translateX(-50%);
     background:${ST.toast.color};color:${CW};padding:11px 20px;border-radius:12px;
     font-weight:700;font-size:13px;z-index:9999;max-width:300px;text-align:center;
-    box-shadow:0 4px 20px rgba(0,0,0,0.22);">${h(ST.toast.msg)}</div>`:""}
+    box-shadow:0 4px 20px rgba(0,0,0,0.22);">${h(ST.toast.msg)}</div>`:`<div id="toast_el" style="display:none;"></div>`}
 
   ${ST.clienteActivo?`
   <div style="background:${CB};color:${CW};padding:9px 16px;display:flex;
