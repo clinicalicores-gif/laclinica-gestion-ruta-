@@ -57,7 +57,7 @@ var ST={
   filtroCobro:"todos", ordenCobro:"monto",
   filtroProspecto:"todos",
   searchCatAdmin:"", filtroCatAdmin:"todos",
-  searchClAdmin:"", searchPend:"", searchProspecto:"",
+  searchClAdmin:"", searchPend:"", searchProspecto:"", searchDev:"",
   modal:null, toast:null, toastT:null,
   _saving:false
 };
@@ -1742,24 +1742,68 @@ function htmlGastos(){
 }
 
 // ── DEVOLUCIONES ──────────────────────────────────────────────────
+var _devTimer=null;
+function debDev(v){
+  clearTimeout(_devTimer);
+  ST.searchDev=v;
+  _devTimer=setTimeout(()=>{
+    var q=v.toLowerCase();
+    var lista=ST.devoluciones.filter(d=>
+      (d.cliente||"").toLowerCase().includes(q)||
+      (d.producto||"").toLowerCase().includes(q)||
+      (d.motivo||"").toLowerCase().includes(q));
+    var el=$("dev_lista");
+    if(el) el.innerHTML=buildDevCards(lista);
+  },300);
+}
+function buildDevCards(lista){
+  if(!lista.length) return`<div style="text-align:center;padding:48px;color:#94A3B8;">Sin devoluciones</div>`;
+  var colorEstado={pendiente:CA,resuelto:CG,rechazado:CR,proceso:CB};
+  return lista.map(d=>`<div style="background:${CW};border-radius:12px;padding:12px;margin-bottom:7px;
+    box-shadow:0 1px 3px rgba(0,0,0,0.06);border-left:4px solid ${colorEstado[d.estado||"pendiente"]||CA};">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;">
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:14px;font-weight:700;color:${CN};">${h(d.cliente||"")}</div>
+        <div style="font-size:11px;color:#64748B;">${h(d.producto||"")}${d.cantidad?" · "+d.cantidad+"u":""} · ${h(d.fecha||"")}</div>
+        ${d.motivo?`<div style="font-size:11px;color:${CA};margin-top:2px;">↩️ ${h(d.motivo)}</div>`:""}
+        ${d.notas?`<div style="font-size:11px;color:#64748B;margin-top:2px;">📝 ${h(d.notas)}</div>`:""}
+      </div>
+      <div style="text-align:right;flex-shrink:0;margin-left:8px;">
+        ${d.monto?`<div style="font-size:14px;font-weight:700;color:${CR};">${fmtM(d.monto)}</div>`:""}
+        <div style="background:${colorEstado[d.estado||"pendiente"]||CA};color:${CW};border-radius:7px;
+          padding:2px 8px;font-size:10px;font-weight:700;margin-top:3px;">${h(d.estado||"pendiente")}</div>
+      </div>
+    </div>
+  </div>`).join("");
+}
 function htmlDevoluciones(){
+  var q=(ST.searchDev||"").toLowerCase();
+  var pendientes=ST.devoluciones.filter(d=>d.estado!=="resuelto");
+  var lista=ST.devoluciones.filter(d=>
+    !q||(d.cliente||"").toLowerCase().includes(q)||
+    (d.producto||"").toLowerCase().includes(q)||
+    (d.motivo||"").toLowerCase().includes(q));
   return`<div class="fade">${subHeader("Devoluciones","↩️")}
+  ${pendientes.length>0?`<div style="background:#FEF3C7;border-bottom:2px solid #FCD34D;padding:10px 16px;
+    display:flex;align-items:center;gap:8px;">
+    <span style="font-size:18px;">⚠️</span>
+    <div>
+      <div style="font-size:13px;font-weight:700;color:#92400E;">${pendientes.length} devolución${pendientes.length!==1?"es":""} pendiente${pendientes.length!==1?"s":""}</div>
+      <div style="font-size:11px;color:#B45309;">Requieren atención</div>
+    </div>
+  </div>`:""}
   <div style="padding:14px 14px 80px;">
+    <div style="position:relative;margin-bottom:10px;">
+      <span style="position:absolute;left:11px;top:50%;transform:translateY(-50%);font-size:14px;">🔍</span>
+      <input id="s_dev" type="text" placeholder="Buscar por cliente o producto..."
+        value="${h(ST.searchDev||"")}" oninput="debDev(this.value)"
+        style="width:100%;border:2px solid #E2E8F0;border-radius:10px;
+        padding:10px 12px 10px 33px;font-size:13px;outline:none;"/>
+    </div>
     <button onclick="setState({modal:{tipo:'nuevaDev'}})"
       style="width:100%;background:${CN};border:none;border-radius:13px;padding:13px;
       color:${CW};font-size:15px;font-weight:700;cursor:pointer;margin-bottom:14px;">+ Nueva Devolución</button>
-    ${ST.devoluciones.slice(0,50).map(d=>`<div style="background:${CW};border-radius:12px;padding:12px;margin-bottom:7px;
-      box-shadow:0 1px 3px rgba(0,0,0,0.06);">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-        <div>
-          <div style="font-size:14px;font-weight:700;color:${CN};">${h(d.cliente||"")}</div>
-          <div style="font-size:11px;color:#64748B;">${h(d.producto||"")} · ${h(d.motivo||"")}</div>
-        </div>
-        <div style="background:${d.estado==="resuelto"?CG:CA};color:${CW};border-radius:7px;
-          padding:2px 8px;font-size:10px;font-weight:700;">${h(d.estado||"pendiente")}</div>
-      </div>
-    </div>`).join("")}
-    ${!ST.devoluciones.length?`<div style="text-align:center;padding:48px;color:#94A3B8;">Sin devoluciones</div>`:""}
+    <div id="dev_lista">${buildDevCards(lista)}</div>
   </div></div>`;
 }
 
@@ -2578,11 +2622,13 @@ async function guardarGasto(){
 
 // modal: devolución ───────────────────────────────────────────────
 function mNuevaDev(){
+  var nombresClientes=ST.clientes.map(c=>c.nombre).sort();
   return`${mHeader("Nueva Devolución")}
   <div style="margin-bottom:12px;">
     <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Cliente *</label>
-    <input id="dv_cli" type="text" placeholder="Nombre del negocio"
+    <input id="dv_cli" type="text" placeholder="Nombre del negocio" list="dv_cli_list"
       style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:14px;outline:none;"/>
+    <datalist id="dv_cli_list">${nombresClientes.map(n=>`<option value="${h(n)}">`).join("")}</datalist>
   </div>
   <div style="margin-bottom:12px;">
     <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Producto *</label>
@@ -2601,11 +2647,22 @@ function mNuevaDev(){
         style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:14px;outline:none;"/>
     </div>
   </div>
-  <div style="margin-bottom:16px;">
+  <div style="margin-bottom:12px;">
     <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Motivo</label>
     <select id="dv_mot" style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:14px;outline:none;background:${CW};">
       ${["Producto vencido","En mal estado","Producto incorrecto","Daño en transporte","Exceso de pedido","Otro"].map(m=>`<option>${m}</option>`).join("")}
     </select>
+  </div>
+  <div style="margin-bottom:12px;">
+    <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Estado</label>
+    <select id="dv_estado" style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:14px;outline:none;background:${CW};">
+      ${["pendiente","proceso","resuelto","rechazado"].map(e=>`<option>${e}</option>`).join("")}
+    </select>
+  </div>
+  <div style="margin-bottom:16px;">
+    <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Notas</label>
+    <textarea id="dv_notas" rows="2" placeholder="Observaciones adicionales..."
+      style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:14px;outline:none;resize:none;"></textarea>
   </div>
   <button onclick="guardarDev()"
     style="width:100%;background:${CG};border:none;border-radius:13px;padding:14px;
@@ -2617,7 +2674,8 @@ async function guardarDev(){
   if(!cliente||!producto){toast("Cliente y producto son obligatorios",CR);return;}
   var data={cliente,producto,cantidad:parseInt(val("dv_cant")||1),
     monto:parseFloat(val("dv_monto")||0),motivo:val("dv_mot"),
-    estado:"pendiente",fecha:fmtF(),ts:firebase.firestore.FieldValue.serverTimestamp()};
+    estado:val("dv_estado")||"pendiente",notas:val("dv_notas")||"",
+    fecha:fmtF(),ts:firebase.firestore.FieldValue.serverTimestamp()};
   try{
     var ref=await db.collection("devoluciones").add(data);
     ST.devoluciones.unshift({id:ref.id,...data});
