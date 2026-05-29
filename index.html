@@ -1864,34 +1864,81 @@ function htmlDevoluciones(){
 }
 
 // ── CATÁLOGO ADMIN ────────────────────────────────────────────────
+var _catAdminTimer=null;
+function debCatAdmin(v){
+  clearTimeout(_catAdminTimer);
+  ST.searchCatAdmin=v;
+  _catAdminTimer=setTimeout(()=>{
+    var q=v.toLowerCase();
+    var filtro=ST.filtroCatAdmin||"todos";
+    var lista=ST.catalogo.filter(p=>{
+      if(filtro!=="todos"&&filtro!=="sin_stock"&&p.sistema!==filtro) return false;
+      if(filtro==="sin_stock"&&p.disponible!=="Sin stock") return false;
+      if(q&&!(p.nombre||"").toLowerCase().includes(q)&&!(p.codigo||"").toLowerCase().includes(q)) return false;
+      return true;
+    }).sort((a,b)=>(a.nombre||"").localeCompare(b.nombre||""));
+    var el=$("cat_admin_lista");
+    if(el) el.innerHTML=buildCatAdminCards(lista);
+  },300);
+}
+function buildCatAdminCards(lista){
+  if(!lista.length) return`<div style="text-align:center;padding:40px;color:#94A3B8;">Sin productos</div>`;
+  return lista.map(p=>`<div style="background:${CW};border-radius:12px;padding:12px;margin-bottom:7px;
+    box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:11px;color:#94A3B8;">${h(p.codigo||"")} · ${h(p.categoria||"")} · ${h(p.sistema||"")}</div>
+        <div style="font-size:14px;font-weight:700;color:${CN};">${h(p.nombre)}</div>
+        <div style="font-size:11px;color:#64748B;margin-top:2px;">
+          A:${fmtM(p.precioA)} B:${fmtM(p.precioB)} C:${fmtM(p.precioC)} D:${fmtM(p.precioD||0)}
+          ${p.costo?` · Costo:${fmtM(p.costo)}`:""}
+        </div>
+        ${p.stockActual!=null?`<div style="font-size:11px;margin-top:2px;color:${p.stockActual<=(p.stockMinimo||0)?CR:"#64748B"};">
+          📦 Stock: ${p.stockActual}${p.stockMinimo?"/"+p.stockMinimo:""}</div>`:""}
+      </div>
+      <div style="display:flex;gap:5px;flex-shrink:0;">
+        <button onclick="editProd('${p.id}')"
+          style="background:#F1F5F9;border:none;border-radius:7px;padding:5px 9px;font-size:12px;cursor:pointer;">✏️</button>
+        <button onclick="toggleDisp('${p.id}','${p.disponible}')"
+          style="background:${p.disponible==="Sin stock"?"#FEE2E2":"#DCFCE7"};border:none;border-radius:7px;
+          padding:5px 9px;font-size:11px;font-weight:600;cursor:pointer;
+          color:${p.disponible==="Sin stock"?CR:CG};">
+          ${p.disponible==="Sin stock"?"Sin stock":"OK"}</button>
+      </div>
+    </div>
+  </div>`).join("");
+}
 function htmlCatalogoAdmin(){
+  var filtro=ST.filtroCatAdmin||"todos";
+  var q=(ST.searchCatAdmin||"").toLowerCase();
+  var lista=ST.catalogo.filter(p=>{
+    if(filtro!=="todos"&&filtro!=="sin_stock"&&p.sistema!==filtro) return false;
+    if(filtro==="sin_stock"&&p.disponible!=="Sin stock") return false;
+    if(q&&!(p.nombre||"").toLowerCase().includes(q)&&!(p.codigo||"").toLowerCase().includes(q)) return false;
+    return true;
+  }).sort((a,b)=>(a.nombre||"").localeCompare(b.nombre||""));
+  var chips=[["todos","Todos ("+ST.catalogo.length+")"],["Perseo","Perseo"],["Importados","Importados"],["sin_stock","Sin stock"]];
   return`<div class="fade">${subHeader("Catálogo Admin","🧴")}
+  <div style="background:${CN};padding:0 14px 12px;">
+    <div style="position:relative;margin-bottom:8px;">
+      <span style="position:absolute;left:11px;top:50%;transform:translateY(-50%);font-size:14px;">🔍</span>
+      <input id="s_cat_admin" type="text" placeholder="Buscar producto o código..."
+        value="${h(ST.searchCatAdmin||"")}" oninput="debCatAdmin(this.value)"
+        style="width:100%;background:rgba(255,255,255,0.1);border:none;border-radius:10px;
+        padding:10px 12px 10px 33px;color:${CW};font-size:13px;outline:none;"/>
+    </div>
+    <div style="overflow-x:auto;white-space:nowrap;padding-bottom:2px;">
+      ${chips.map(([v,l])=>`<button onclick="setState({filtroCatAdmin:'${v}',searchCatAdmin:''})"
+        style="display:inline-block;margin:0 4px 0 0;padding:5px 12px;border-radius:20px;
+        background:${filtro===v?CW:"rgba(255,255,255,0.15)"};color:${filtro===v?CN:CW};
+        border:none;font-size:12px;font-weight:700;cursor:pointer;">${l}</button>`).join("")}
+    </div>
+  </div>
   <div style="padding:14px 14px 80px;">
     <button onclick="setState({modal:{tipo:'nuevoProducto'}})"
       style="width:100%;background:${CN};border:none;border-radius:13px;padding:13px;
       color:${CW};font-size:15px;font-weight:700;cursor:pointer;margin-bottom:14px;">+ Nuevo Producto</button>
-    ${ST.catalogo.sort((a,b)=>(a.nombre||"").localeCompare(b.nombre||"")).map(p=>`
-    <div style="background:${CW};border-radius:12px;padding:12px;margin-bottom:7px;
-      box-shadow:0 1px 3px rgba(0,0,0,0.06);">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-        <div style="flex:1;min-width:0;">
-          <div style="font-size:11px;color:#94A3B8;">${h(p.codigo||"")} · ${h(p.categoria||"")}</div>
-          <div style="font-size:14px;font-weight:700;color:${CN};">${h(p.nombre)}</div>
-          <div style="font-size:11px;color:#64748B;margin-top:2px;">
-            A:${fmtM(p.precioA)} B:${fmtM(p.precioB)} C:${fmtM(p.precioC)} D:${fmtM(p.precioD||0)}
-          </div>
-        </div>
-        <div style="display:flex;gap:5px;flex-shrink:0;">
-          <button onclick="editProd('${p.id}')"
-            style="background:#F1F5F9;border:none;border-radius:7px;padding:5px 9px;font-size:12px;cursor:pointer;">✏️</button>
-          <button onclick="toggleDisp('${p.id}','${p.disponible}')"
-            style="background:${p.disponible==="Sin stock"?"#FEE2E2":"#DCFCE7"};border:none;border-radius:7px;
-            padding:5px 9px;font-size:11px;font-weight:600;cursor:pointer;
-            color:${p.disponible==="Sin stock"?CR:CG};">
-            ${p.disponible==="Sin stock"?"Sin stock":"OK"}</button>
-        </div>
-      </div>
-    </div>`).join("")}
+    <div id="cat_admin_lista">${buildCatAdminCards(lista)}</div>
   </div></div>`;
 }
 
@@ -2441,13 +2488,33 @@ function camposProd(pre){
     <input id="pd_nom" type="text" placeholder="Nombre del producto" value="${h(pre?.nombre||"")}"
       style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:14px;outline:none;"/>
   </div>
-  <div style="margin-bottom:12px;">
-    <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Costo (auto-calcula precios)</label>
+  <div style="margin-bottom:10px;">
+    <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:7px;">Modo de ingreso de precios</label>
+    <div style="display:flex;gap:6px;">
+      <button id="pd_modo_costo" onclick="setPrecioModo('costo')"
+        style="flex:1;padding:9px;border:2px solid ${CN};border-radius:10px;
+        background:${CN};color:${CW};font-size:12px;font-weight:700;cursor:pointer;">
+        Por costo</button>
+      <button id="pd_modo_a" onclick="setPrecioModo('precioA')"
+        style="flex:1;padding:9px;border:2px solid #E2E8F0;border-radius:10px;
+        background:${CW};color:#64748B;font-size:12px;font-weight:700;cursor:pointer;">
+        Por Precio A</button>
+    </div>
+  </div>
+  <div id="pd_costo_w" style="margin-bottom:12px;">
+    <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Costo (auto-calcula precios +25/20/16/12%)</label>
     <input id="pd_costo" type="number" step="0.01" placeholder="0.00" value="${h(pre?.costo||"")}"
       oninput="calcPrecios(this.value)"
       style="width:100%;border:2px solid ${CA};border-radius:11px;padding:12px;font-size:16px;font-weight:700;outline:none;"/>
   </div>
-  <div style="font-size:13px;font-weight:700;color:${CN};margin-bottom:8px;">Precios (A +25% · B +20% · C +16% · D +12%)</div>
+  <div id="pd_pa_w" style="margin-bottom:12px;display:none;">
+    <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Precio A (auto-calcula B/C/D)</label>
+    <input id="pd_precioA_base" type="number" step="0.01" placeholder="0.00" value=""
+      oninput="calcPreciosDesdeA(this.value)"
+      style="width:100%;border:2px solid ${CB};border-radius:11px;padding:12px;font-size:16px;font-weight:700;outline:none;"/>
+    <div style="font-size:10px;color:#94A3B8;margin-top:3px;">B = A×0.96 · C = A×0.928 · D = A×0.896</div>
+  </div>
+  <div style="font-size:13px;font-weight:700;color:${CN};margin-bottom:8px;">Precios</div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
     ${["A","B","C","D"].map(t=>`<div>
       <label style="font-size:12px;font-weight:600;color:#64748B;display:block;margin-bottom:4px;">Tarifa ${t}</label>
@@ -2486,6 +2553,24 @@ function calcPrecios(costo){
   if(!c||c<=0) return;
   var mults={pA:1.25,pB:1.20,pC:1.16,pD:1.12};
   Object.entries(mults).forEach(([id,m])=>{var el=$("pd_"+id);if(el)el.value=(c*m).toFixed(2);});
+}
+function calcPreciosDesdeA(precioA){
+  var a=parseFloat(precioA||0);
+  if(!a||a<=0) return;
+  var mults={pA:1,pB:0.96,pC:0.928,pD:0.896};
+  Object.entries(mults).forEach(([id,m])=>{var el=$("pd_"+id);if(el)el.value=(a*m).toFixed(2);});
+}
+function setPrecioModo(modo){
+  var cw=$("pd_costo_w"),paw=$("pd_pa_w");
+  if(cw) cw.style.display=modo==="costo"?"block":"none";
+  if(paw) paw.style.display=modo==="precioA"?"block":"none";
+  ["pd_modo_costo","pd_modo_a"].forEach(id=>{
+    var btn=$(id);if(!btn)return;
+    var active=(id==="pd_modo_costo"&&modo==="costo")||(id==="pd_modo_a"&&modo==="precioA");
+    btn.style.background=active?CN:CW;
+    btn.style.color=active?CW:"#64748B";
+    btn.style.borderColor=active?CN:"#E2E8F0";
+  });
 }
 
 function mNuevoProducto(){
