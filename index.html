@@ -119,6 +119,15 @@ function ventasSemana(){
     return d>=lunes&&d<=hoy;
   }).reduce((s,p)=>s+(p.montoConIVA||p.monto||0),0);
 }
+function diasDesde(fechaStr){
+  if(!fechaStr)return null;
+  var pts=fechaStr.split("/");
+  if(pts.length!==3)return null;
+  var d=new Date(parseInt(pts[2]),parseInt(pts[1])-1,parseInt(pts[0]));
+  var hoy=new Date();hoy.setHours(0,0,0,0);
+  var diff=Math.floor((hoy-d)/(1000*60*60*24));
+  return diff>=0?diff:0;
+}
 function fmtF(d){
   var x=d||new Date();
   return String(x.getDate()).padStart(2,"0")+"/"+String(x.getMonth()+1).padStart(2,"0")+"/"+x.getFullYear();
@@ -488,12 +497,15 @@ function htmlRuta(){
           <div style="font-size:11px;color:#64748B;margin-top:1px;">
             ${h(c.encargado||"")}${c.zona?" · "+h(c.zona):""}</div>
         </div>
-        <div style="text-align:right;flex-shrink:0;">
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;">
           <div style="background:${CN};color:${CW};border-radius:7px;padding:2px 8px;
-            font-size:11px;font-weight:700;margin-bottom:3px;">Tarifa ${h(c.precio||"C")}</div>
+            font-size:11px;font-weight:700;">Tarifa ${h(c.precio||"C")}</div>
           ${deuda>0
             ?`<div style="color:${CR};font-size:11px;font-weight:700;">Debe ${fmtM(deuda)}</div>`
             :`<div style="color:${CG};font-size:11px;font-weight:600;">Al día ✓</div>`}
+          <button onclick="event.stopPropagation();abrirFichaCliente('${c.id}')"
+            style="background:#F1F5F9;border:none;border-radius:7px;padding:3px 9px;
+            font-size:10px;font-weight:700;color:#64748B;cursor:pointer;">📋 Ficha</button>
         </div>
       </div>`;
     }).join("")}
@@ -661,12 +673,15 @@ function debRuta(v){
           <div style="font-size:11px;color:#64748B;margin-top:1px;">
             ${h(c.encargado||"")}${c.zona?" · "+h(c.zona):""}</div>
         </div>
-        <div style="text-align:right;flex-shrink:0;">
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;">
           <div style="background:${CN};color:${CW};border-radius:7px;padding:2px 8px;
-            font-size:11px;font-weight:700;margin-bottom:3px;">Tarifa ${h(c.precio||"C")}</div>
+            font-size:11px;font-weight:700;">Tarifa ${h(c.precio||"C")}</div>
           ${deuda>0
             ?`<div style="color:${CR};font-size:11px;font-weight:700;">Debe ${fmtM(deuda)}</div>`
             :`<div style="color:${CG};font-size:11px;font-weight:600;">Al día ✓</div>`}
+          <button onclick="event.stopPropagation();abrirFichaCliente('${c.id}')"
+            style="background:#F1F5F9;border:none;border-radius:7px;padding:3px 9px;
+            font-size:10px;font-weight:700;color:#64748B;cursor:pointer;">📋 Ficha</button>
         </div>
       </div>`;
     }).join("");
@@ -1241,6 +1256,7 @@ function htmlModal(){
   if(m.tipo==="verNota")        c=mVerNota(m.pedido);
   if(m.tipo==="nuevoClienteDesdeProspecto") c=mNuevoClienteDesdeProspecto(m.prospecto);
   if(m.tipo==="cierreDia")      c=mCierreDia();
+  if(m.tipo==="fichaCliente")   c=mFichaCliente(m.cliente);
   return`<div onclick="if(event.target===this)setState({modal:null})"
     style="position:fixed;inset:0;background:rgba(0,0,0,0.48);z-index:500;
     display:flex;align-items:flex-end;justify-content:center;">
@@ -2040,6 +2056,121 @@ async function guardarPendiente(){
     ST.pendientes.unshift({id:ref.id,...data});
     toast("✓ Pendiente guardado",CG);setState({modal:null});
   }catch(e){toast("Error: "+e.message,CR);}
+}
+
+// ── FICHA DE VISITA + ESTADÍSTICAS POR CLIENTE ─────────────────────
+function abrirFichaCliente(id){
+  var c=ST.clientes.find(x=>x.id===id);
+  if(!c)return;
+  setState({modal:{tipo:"fichaCliente",cliente:c}});
+}
+
+function mFichaCliente(c){
+  var pedidosCliente=ST.pedidos.filter(p=>p.clienteId===c.id);
+  var ultimoPedido=pedidosCliente[0]||null;
+  var diasUlt=ultimoPedido?diasDesde(ultimoPedido.fecha):null;
+  var sinComprar21=diasUlt!==null&&diasUlt>=21;
+
+  // Estadísticas 30 días
+  var hace30=new Date();hace30.setDate(hace30.getDate()-30);hace30.setHours(0,0,0,0);
+  var ped30=pedidosCliente.filter(p=>{
+    var pts=(p.fecha||"").split("/");if(pts.length!==3)return false;
+    var d=new Date(parseInt(pts[2]),parseInt(pts[1])-1,parseInt(pts[0]));
+    return d>=hace30;
+  });
+  var total30=ped30.reduce((s,p)=>s+(p.montoConIVA||p.monto||0),0);
+  var promedio=ped30.length>0?total30/ped30.length:0;
+
+  // Pendientes/acuerdos activos vinculados a este cliente
+  var acuerdos=ST.pendientes.filter(p=>p.clienteId===c.id&&!p.completado&&
+    (p.tipo==="cobro"||p.tipo==="acuerdo"));
+
+  var deuda=parseFloat(c.pendiente||0);
+  var limiteAlc=c.limiteCred&&deuda>=c.limiteCred;
+
+  return`${mHeader(h(c.nombre))}
+  <div style="font-size:11px;color:#64748B;margin-top:-10px;margin-bottom:14px;">
+    ${h(c.encargado||"")}${c.zona?" · "+h(c.zona):""}${c.tel?` · 📞 ${h(c.tel)}`:""}</div>
+
+  <!-- 3 stats rápidos -->
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px;">
+    <div style="background:#F8FAFC;border-radius:11px;padding:10px;text-align:center;">
+      <div style="font-size:22px;font-weight:800;color:${diasUlt===null?CN:sinComprar21?CA:CG};">
+        ${diasUlt===null?"—":String(diasUlt)}</div>
+      <div style="font-size:9px;color:#94A3B8;font-weight:600;margin-top:1px;">DÍAS SIN VISITAR</div>
+      ${sinComprar21?`<div style="font-size:8px;color:${CA};font-weight:800;margin-top:2px;">⚠ 3+ semanas</div>`:""}
+    </div>
+    <div style="background:${deuda>0?"#FEF2F2":"#F0FDF4"};border-radius:11px;padding:10px;text-align:center;">
+      <div style="font-size:${deuda>0?"17":"22"}px;font-weight:800;color:${deuda>0?CR:CG};">
+        ${deuda>0?fmtM(deuda):"✓"}</div>
+      <div style="font-size:9px;color:#94A3B8;font-weight:600;margin-top:1px;">DEUDA</div>
+      ${limiteAlc?`<div style="font-size:8px;color:${CR};font-weight:800;margin-top:2px;">LÍMITE ALCANZADO</div>`:""}
+    </div>
+    <div style="background:#F8FAFC;border-radius:11px;padding:10px;text-align:center;">
+      <div style="font-size:16px;font-weight:800;color:${CN};">${fmtM(total30)}</div>
+      <div style="font-size:9px;color:#94A3B8;font-weight:600;margin-top:1px;">VENTAS 30D</div>
+      ${ped30.length>0?`<div style="font-size:8px;color:#64748B;margin-top:2px;">${ped30.length} visita${ped30.length!==1?"s":""}</div>`:""}
+    </div>
+  </div>
+
+  <!-- Último pedido -->
+  ${ultimoPedido?`<div style="background:#F0FDF4;border-left:3px solid ${CG};border-radius:0 10px 10px 0;
+    padding:10px 12px;margin-bottom:10px;">
+    <div style="font-size:10px;font-weight:800;color:${CG};margin-bottom:5px;">ÚLTIMO PEDIDO</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:12px;color:#64748B;">${h(ultimoPedido.fecha||"")}</div>
+        ${(ultimoPedido.productos||[]).length?
+          `<div style="font-size:12px;color:${CN};margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+            ${(ultimoPedido.productos||[]).slice(0,2).map(p=>p.cantidad+"x "+p.nombre).join(" · ")}
+            ${(ultimoPedido.productos||[]).length>2?" +más":""}</div>`:
+          `<div style="font-size:11px;color:#94A3B8;">Sin detalle</div>`}
+      </div>
+      <div style="text-align:right;flex-shrink:0;">
+        <div style="font-size:15px;font-weight:800;color:${CN};">${fmtM(ultimoPedido.montoConIVA||ultimoPedido.monto)}</div>
+        <div style="font-size:10px;color:#94A3B8;">${h(ultimoPedido.estado||"")}</div>
+      </div>
+    </div>
+  </div>`:
+  `<div style="background:#F8FAFC;border-radius:10px;padding:10px 12px;margin-bottom:10px;
+    text-align:center;font-size:12px;color:#94A3B8;">Sin pedidos anteriores</div>`}
+
+  <!-- Acuerdos activos -->
+  ${acuerdos.length?`<div style="background:#FFFBEB;border-left:3px solid ${CA};
+    border-radius:0 10px 10px 0;padding:10px 12px;margin-bottom:10px;">
+    <div style="font-size:10px;font-weight:800;color:${CA};margin-bottom:5px;">🤝 ACUERDOS PENDIENTES</div>
+    ${acuerdos.map(a=>`<div style="font-size:12px;color:${CN};margin-bottom:3px;">
+      · ${h(a.descripcion||"")}${a.fecha?` <span style="color:#94A3B8;">(${h(a.fecha)})</span>`:""}</div>`).join("")}
+  </div>`:""}
+
+  <!-- Condiciones/notas del cliente -->
+  ${c.condicionesPago?`<div style="background:#EFF6FF;border-left:3px solid ${CB};
+    border-radius:0 10px 10px 0;padding:10px 12px;margin-bottom:10px;">
+    <div style="font-size:10px;font-weight:800;color:${CB};margin-bottom:4px;">💬 CONDICIONES</div>
+    <div style="font-size:12px;color:${CN};">${h(c.condicionesPago)}</div>
+  </div>`:""}
+
+  <!-- Estadísticas compactas -->
+  ${ped30.length>0?`<div style="background:#F8FAFC;border-radius:10px;padding:9px 12px;
+    margin-bottom:14px;display:flex;gap:12px;flex-wrap:wrap;">
+    <span style="font-size:11px;color:#64748B;">📋 <b style="color:${CN};">${ped30.length}</b> pedido${ped30.length!==1?"s":""} en 30 días</span>
+    <span style="font-size:11px;color:#64748B;">Ø <b style="color:${CN};">${fmtM(promedio)}</b>/visita</span>
+    ${pedidosCliente.length>0?`<span style="font-size:11px;color:#64748B;">Total: <b style="color:${CN};">${pedidosCliente.length}</b> hist.</span>`:""}
+  </div>`:`<div style="margin-bottom:14px;"></div>`}
+
+  <!-- Botones de acción -->
+  <div style="display:flex;gap:8px;">
+    <button onclick="selCliente('${c.id}')"
+      style="flex:2;background:${CB};border:none;border-radius:12px;padding:13px;
+      color:${CW};font-size:14px;font-weight:700;cursor:pointer;">
+      🛒 Tomar Pedido</button>
+    ${deuda>0?`<button onclick="setState({modal:null});setTimeout(()=>abrirCobroCliente('${c.id}'),100)"
+      style="flex:1;background:${CG};border:none;border-radius:12px;padding:13px;
+      color:${CW};font-size:13px;font-weight:700;cursor:pointer;">💵 Cobrar</button>`:""}
+    ${c.tel?`<a href="tel:${h(c.tel)}" onclick="setState({modal:null})"
+      style="background:#EFF6FF;border:none;border-radius:12px;padding:13px 14px;
+      font-size:16px;text-decoration:none;display:flex;align-items:center;">📞</a>`:""}
+  </div>`;
 }
 
 // ── AJUSTES ────────────────────────────────────────────────────────
