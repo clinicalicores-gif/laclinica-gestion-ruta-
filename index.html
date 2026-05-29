@@ -54,6 +54,9 @@ var ST={
   carrito:[],
   sistemaCarrito:"Perseo",
   search:"", searchCat:"", searchCobro:"", filtroCat:"Todos", filtroZona:"Todos", filtroDia:"Hoy", filtroPedidoCliente:"", filtroClientes:"todos",
+  filtroCobro:"todos", ordenCobro:"monto",
+  filtroProspecto:"todos",
+  searchCatAdmin:"", filtroCatAdmin:"todos",
   modal:null, toast:null, toastT:null,
   _saving:false
 };
@@ -1172,14 +1175,21 @@ function htmlPedidos(){
   </div>`:""}
   <div style="padding:14px 14px 80px;">
     ${lista.length===0?`<div style="text-align:center;padding:48px;color:#94A3B8;">Sin pedidos</div>`:""}
-    ${lista.slice(0,80).map(p=>`<div style="background:${CW};border-radius:13px;padding:13px;margin-bottom:8px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+    ${lista.slice(0,80).map(p=>{
+      var cli=ST.clientes.find(x=>x.id===p.clienteId);
+      var tieneDeuda=cli&&(cli.pendiente||0)>0.01&&p.estadoCobro!=="cobrado";
+      return`<div style="background:${CW};border-radius:13px;padding:13px;margin-bottom:8px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">
-        <div>
-          <div onclick="p.clienteId&&irACliente('${p.clienteId}')"
-            style="font-size:14px;font-weight:700;color:${CN};cursor:pointer;display:inline-block;">${h(p.cliente)}</div>
-          <div style="font-size:11px;color:#64748B;">${h(p.fecha||"")} · ${h(p.sistema||"")}</div>
+        <div style="flex:1;min-width:0;">
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            <div onclick="p.clienteId&&irACliente('${p.clienteId}')"
+              style="font-size:14px;font-weight:700;color:${CN};cursor:pointer;display:inline-block;">${h(p.cliente)}</div>
+            ${tieneDeuda?`<span style="background:${CR};color:${CW};font-size:9px;font-weight:800;border-radius:10px;padding:2px 7px;">Deuda ${fmtM(cli.pendiente)}</span>`:""}
+          </div>
+          <div style="font-size:11px;color:#64748B;">${h(p.fecha||"")} · ${h(p.sistema||"")}${p.contactoFacturacion?" · "+h(p.contactoFacturacion):""}</div>
+          ${p.factura?`<div style="font-size:11px;color:${CB};font-weight:700;margin-top:2px;">Factura: ${h(p.factura)}</div>`:""}
         </div>
-        <div style="text-align:right;">
+        <div style="text-align:right;flex-shrink:0;margin-left:8px;">
           <div style="font-size:14px;font-weight:700;">${fmtM(p.montoConIVA||p.monto)}</div>
           <div style="background:${colE[p.estado]||CA};color:${CW};border-radius:6px;
             padding:2px 8px;font-size:10px;font-weight:700;margin-top:3px;">${h(p.estado||"")}</div>
@@ -1192,9 +1202,9 @@ function htmlPedidos(){
           📄 ${p.numeroNota?fmtNota(p.numeroNota):"Nota"}</button>
         ${p.estado==="tomado"?`<button onclick="cambiarEstado('${p.id}','facturado')"
           style="background:${CB};border:none;border-radius:7px;padding:6px 12px;color:${CW};font-size:12px;font-weight:600;cursor:pointer;">✓ Facturar</button>`:""}
-        ${p.estado==="facturado"?`<button onclick="cambiarEstado('${p.id}','despachado')"
+        ${p.estado==="facturado"?`<button onclick="abrirDespachar('${p.id}')"
           style="background:${CO};border:none;border-radius:7px;padding:6px 12px;color:${CW};font-size:12px;font-weight:600;cursor:pointer;">📦 Despachar</button>`:""}
-        ${p.estado==="despachado"?`<button onclick="cambiarEstado('${p.id}','entregado')"
+        ${p.estado==="despachado"?`<button onclick="confirmarEntregar('${p.id}')"
           style="background:${CG};border:none;border-radius:7px;padding:6px 12px;color:${CW};font-size:12px;font-weight:600;cursor:pointer;">✓ Entregar</button>`:""}
         ${(p.saldoPendiente||0)>0?`<button onclick="abrirCobro('${p.id}')"
           style="background:${CG};border:none;border-radius:7px;padding:6px 12px;color:${CW};font-size:12px;font-weight:600;cursor:pointer;">💵 Cobrar</button>`:""}
@@ -1202,7 +1212,8 @@ function htmlPedidos(){
           style="background:#FEF2F2;border:1px solid #FECACA;border-radius:7px;padding:6px 10px;
           color:${CR};font-size:11px;font-weight:600;cursor:pointer;">✕ Cancelar</button>`:""}
       </div>
-    </div>`).join("")}
+    </div>`;
+    }).join("")}
   </div></div>`;
 }
 
@@ -1219,6 +1230,78 @@ async function cambiarEstado(id,estado){
     var idx=ST.pedidos.findIndex(p=>p.id===id);
     if(idx>=0) ST.pedidos[idx].estado=estado;
     toast(estado==="cancelado"?"Pedido cancelado — registro guardado":"Estado: "+estado,estado==="cancelado"?CA:CG);render();
+  }catch(e){toast("Error: "+e.message,CR);}
+}
+
+function abrirDespachar(id){
+  var p=ST.pedidos.find(x=>x.id===id);
+  if(!p) return;
+  setState({modal:{tipo:"despachar",pedido:p}});
+}
+
+function mDespachar(p){
+  return`${mHeader("📦 Despachar Pedido")}
+  <div style="background:#F8FAFC;border-radius:11px;padding:12px;margin-bottom:14px;">
+    <div style="font-size:13px;color:#64748B;">Cliente</div>
+    <div style="font-size:15px;font-weight:700;color:${CN};">${h(p.cliente||"")}</div>
+    <div style="font-size:12px;color:#64748B;margin-top:4px;">${h(p.fecha||"")} · ${fmtM(p.montoConIVA||p.monto)}</div>
+  </div>
+  <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:6px;">Nro. Factura del sistema *</label>
+  <input id="desp_factura" type="text" placeholder="001-001-000001"
+    style="width:100%;border:2px solid ${CB};border-radius:11px;padding:13px;font-size:15px;font-weight:700;outline:none;margin-bottom:16px;"/>
+  <div style="font-size:12px;color:${CA};margin-top:-10px;margin-bottom:14px;">⚠️ Campo obligatorio para despachar</div>
+  <button onclick="procesarDespachar('${p.id}')"
+    style="width:100%;background:${CO};border:none;border-radius:13px;padding:14px;
+    color:${CW};font-size:16px;font-weight:700;cursor:pointer;margin-bottom:8px;">📦 Confirmar Despacho</button>
+  <button onclick="setState({modal:null})"
+    style="width:100%;background:none;border:2px solid #E2E8F0;border-radius:13px;padding:12px;
+    color:#64748B;font-size:14px;font-weight:600;cursor:pointer;">Cancelar</button>`;
+}
+
+async function procesarDespachar(id){
+  var factura=val("desp_factura");
+  if(!factura){toast("El Nro. de Factura es obligatorio",CR);return;}
+  if(!confirm("¿Confirmar despacho con factura "+factura+"?")) return;
+  try{
+    await db.collection("pedidos").doc(id).update({
+      estado:"despachado",factura,
+      ts:firebase.firestore.FieldValue.serverTimestamp()
+    });
+    var idx=ST.pedidos.findIndex(p=>p.id===id);
+    if(idx>=0){ST.pedidos[idx].estado="despachado";ST.pedidos[idx].factura=factura;}
+    toast("✓ Despachado — Factura "+factura,CG);
+    setState({modal:null});
+  }catch(e){toast("Error: "+e.message,CR);}
+}
+
+async function confirmarEntregar(id){
+  if(!confirm("¿Confirmar como entregado?")) return;
+  var pago=confirm("¿El cliente pagó ahora?\n\nAceptar = Sí pagó\nCancelar = Queda como deuda en Cobros");
+  try{
+    var p=ST.pedidos.find(x=>x.id===id);
+    var upd={estado:"entregado",ts:firebase.firestore.FieldValue.serverTimestamp()};
+    if(pago){
+      upd.estadoCobro="cobrado";
+      upd.saldoPendiente=0;
+      upd.fechaCobro=fmtF();
+    }
+    await db.collection("pedidos").doc(id).update(upd);
+    var idx=ST.pedidos.findIndex(x=>x.id===id);
+    if(idx>=0){
+      ST.pedidos[idx].estado="entregado";
+      if(pago){ST.pedidos[idx].estadoCobro="cobrado";ST.pedidos[idx].saldoPendiente=0;}
+    }
+    if(pago&&p&&p.clienteId){
+      var cIdx=ST.clientes.findIndex(c=>c.id===p.clienteId);
+      if(cIdx>=0){
+        var nSaldo=Math.max(0,(ST.clientes[cIdx].pendiente||0)-(p.saldoPendiente||0));
+        try{await db.collection("clientes").doc(p.clienteId).update({pendiente:nSaldo});
+          ST.clientes[cIdx].pendiente=nSaldo;
+          if(ST.clienteActivo?.id===p.clienteId) ST.clienteActivo.pendiente=nSaldo;
+        }catch(e){}
+      }
+    }
+    toast(pago?"✓ Entregado y cobrado":"✓ Entregado — queda en Cobros",CG);render();
   }catch(e){toast("Error: "+e.message,CR);}
 }
 
@@ -1559,6 +1642,7 @@ function htmlModal(){
   if(m.tipo==="nuevoClienteDesdeProspecto") c=mNuevoClienteDesdeProspecto(m.prospecto);
   if(m.tipo==="cierreDia")      c=mCierreDia();
   if(m.tipo==="fichaCliente")   c=mFichaCliente(m.cliente);
+  if(m.tipo==="despachar")      c=mDespachar(m.pedido);
   if(m.tipo==="acuerdo")        c=mAcuerdo(m.pedido);
   return`<div onclick="if(event.target===this)setState({modal:null})"
     style="position:fixed;inset:0;background:rgba(0,0,0,0.48);z-index:500;
