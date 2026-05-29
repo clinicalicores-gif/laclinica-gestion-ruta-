@@ -57,7 +57,7 @@ var ST={
   filtroCobro:"todos", ordenCobro:"monto",
   filtroProspecto:"todos",
   searchCatAdmin:"", filtroCatAdmin:"todos",
-  searchClAdmin:"", searchPend:"",
+  searchClAdmin:"", searchPend:"", searchProspecto:"",
   modal:null, toast:null, toastT:null,
   _saving:false
 };
@@ -1639,40 +1639,80 @@ function htmlClientesAdmin(){
 function editCl(id){var c=ST.clientes.find(x=>x.id===id);if(!c)return;setState({modal:{tipo:"editarCliente",cliente:c}});}
 
 // ── PROSPECTOS ────────────────────────────────────────────────────
+var _prospTimer=null;
+function debProspecto(v){
+  clearTimeout(_prospTimer);
+  ST.searchProspecto=v;
+  _prospTimer=setTimeout(()=>{
+    var q=v.toLowerCase();
+    var filtro=ST.filtroProspecto||"todos";
+    var etapas=["📞 Por contactar","💬 Contactado","🤝 Interesado","❌ No interesado"];
+    var lista=filtro==="todos"?ST.prospectos:filtro==="convertido"?ST.prospectos.filter(p=>(p.estado||"").includes("Convertido")):ST.prospectos.filter(p=>p.estado===filtro);
+    if(q) lista=lista.filter(p=>(p.nombre||"").toLowerCase().includes(q)||(p.dueno||"").toLowerCase().includes(q)||(p.zona||"").toLowerCase().includes(q));
+    var el=$("prosp_lista");
+    if(el) el.innerHTML=buildProspCards(lista);
+  },300);
+}
+function buildProspCards(lista){
+  if(!lista.length) return`<div style="text-align:center;padding:48px;color:#94A3B8;">Sin prospectos</div>`;
+  var etapas=["📞 Por contactar","💬 Contactado","🤝 Interesado","❌ No interesado","✅ Convertido"];
+  var grupos={};
+  etapas.forEach(e=>{grupos[e]=lista.filter(p=>p.estado===e||(e==="✅ Convertido"&&(p.estado||"").includes("Convertido")));});
+  return etapas.map(e=>{
+    var g=grupos[e];if(!g||!g.length)return"";
+    return`<div style="margin-bottom:16px;">
+      <div style="font-size:11px;font-weight:700;color:#64748B;margin-bottom:6px;text-transform:uppercase;">${e} (${g.length})</div>
+      ${g.map(p=>`<div style="background:#FFFFFF;border-radius:12px;padding:12px;margin-bottom:7px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:14px;font-weight:700;color:${CN};">${h(p.nombre)}</div>
+            <div style="font-size:11px;color:#64748B;">${h(p.dueno||"")}${p.zona?" · "+h(p.zona):""}${p.tipo?" · "+h(p.tipo):""}</div>
+            ${p.proximoPaso?`<div style="font-size:11px;color:${CB};margin-top:3px;">→ ${h(p.proximoPaso)}</div>`:""}
+            ${p.notas?`<div style="font-size:11px;color:#64748B;margin-top:3px;">📝 ${h(p.notas)}</div>`:""}
+            ${p.fechaVisita?`<div style="font-size:11px;color:${CP};margin-top:3px;font-weight:700;">📅 Visita: ${h(p.fechaVisita)}</div>`:""}
+          </div>
+          ${!(p.estado||"").includes("Convertido")?`<button onclick="convertirProspecto('${p.id}')"
+            style="background:#DCFCE7;border:none;border-radius:8px;padding:5px 9px;
+            color:${CG};font-size:11px;font-weight:700;cursor:pointer;flex-shrink:0;white-space:nowrap;">
+            → Cliente</button>`:`<span style="font-size:11px;color:${CG};font-weight:700;flex-shrink:0;">✅ Convertido</span>`}
+        </div>
+        ${p.tel&&wa(p.tel)?`<div style="margin-top:8px;">
+          <a href="${wa(p.tel)}" target="_blank"
+            style="display:inline-flex;align-items:center;gap:5px;background:#DCFCE7;
+            border-radius:7px;padding:5px 11px;font-size:12px;font-weight:700;
+            color:#16A34A;text-decoration:none;">💬 ${h(p.tel)}</a>
+        </div>`:""}
+      </div>`).join("")}
+    </div>`;
+  }).join("");
+}
 function htmlProspectos(){
-  var etapas=["📞 Por contactar","💬 Contactado","🤝 Interesado","❌ No interesado"];
+  var filtro=ST.filtroProspecto||"todos";
+  var q=(ST.searchProspecto||"").toLowerCase();
+  var chips=[["todos","Todos"],["📞 Por contactar","Por contactar"],["💬 Contactado","Contactado"],["🤝 Interesado","Interesado"],["convertido","Convertidos"]];
+  var lista=filtro==="todos"?ST.prospectos:filtro==="convertido"?ST.prospectos.filter(p=>(p.estado||"").includes("Convertido")):ST.prospectos.filter(p=>p.estado===filtro);
+  if(q) lista=lista.filter(p=>(p.nombre||"").toLowerCase().includes(q)||(p.dueno||"").toLowerCase().includes(q));
   return`<div class="fade">${subHeader("Prospectos","🎯")}
+  <div style="background:${CN};padding:0 14px 12px;">
+    <div style="position:relative;margin-bottom:8px;">
+      <span style="position:absolute;left:11px;top:50%;transform:translateY(-50%);font-size:14px;">🔍</span>
+      <input id="s_prosp" type="text" placeholder="Buscar prospecto..."
+        value="${h(ST.searchProspecto||"")}" oninput="debProspecto(this.value)"
+        style="width:100%;background:rgba(255,255,255,0.1);border:none;border-radius:10px;
+        padding:10px 12px 10px 33px;color:${CW};font-size:13px;outline:none;"/>
+    </div>
+    <div style="overflow-x:auto;white-space:nowrap;padding-bottom:2px;">
+      ${chips.map(([v,l])=>`<button onclick="setState({filtroProspecto:'${v}',searchProspecto:''})"
+        style="display:inline-block;margin:0 4px 0 0;padding:5px 12px;border-radius:20px;
+        background:${filtro===v?CW:"rgba(255,255,255,0.15)"};color:${filtro===v?CN:CW};
+        border:none;font-size:12px;font-weight:700;cursor:pointer;">${l}</button>`).join("")}
+    </div>
+  </div>
   <div style="padding:14px 14px 80px;">
     <button onclick="setState({modal:{tipo:'nuevoProspecto'}})"
       style="width:100%;background:${CN};border:none;border-radius:13px;padding:13px;
       color:${CW};font-size:15px;font-weight:700;cursor:pointer;margin-bottom:14px;">+ Nuevo Prospecto</button>
-    ${etapas.map(e=>{
-      var lista=ST.prospectos.filter(p=>p.estado===e);
-      if(!lista.length) return"";
-      return`<div style="margin-bottom:16px;">
-        <div style="font-size:11px;font-weight:700;color:#64748B;margin-bottom:6px;text-transform:uppercase;">${e} (${lista.length})</div>
-        ${lista.map(p=>`<div style="background:${CW};border-radius:12px;padding:12px;margin-bottom:7px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
-            <div style="flex:1;min-width:0;">
-              <div style="font-size:14px;font-weight:700;color:${CN};">${h(p.nombre)}</div>
-              <div style="font-size:11px;color:#64748B;">${h(p.dueno||"")} · ${h(p.zona||"")} · ${h(p.tipo||"")}</div>
-              ${p.proximoPaso?`<div style="font-size:11px;color:${CB};margin-top:3px;">→ ${h(p.proximoPaso)}</div>`:""}
-            </div>
-            ${!p.estado?.includes("Convertido")?`<button onclick="convertirProspecto('${p.id}')"
-              style="background:#DCFCE7;border:none;border-radius:8px;padding:5px 9px;
-              color:${CG};font-size:11px;font-weight:700;cursor:pointer;flex-shrink:0;white-space:nowrap;">
-              → Cliente</button>`:`<span style="font-size:11px;color:${CG};font-weight:700;flex-shrink:0;">✅ Convertido</span>`}
-          </div>
-          ${p.tel&&wa(p.tel)?`<div style="margin-top:8px;">
-            <a href="${wa(p.tel)}" target="_blank"
-              style="display:inline-flex;align-items:center;gap:5px;background:#DCFCE7;
-              border-radius:7px;padding:5px 11px;font-size:12px;font-weight:700;
-              color:#16A34A;text-decoration:none;">💬 ${h(p.tel)}</a>
-          </div>`:""}
-        </div>`).join("")}
-      </div>`;
-    }).join("")}
-    ${!ST.prospectos.length?`<div style="text-align:center;padding:48px;color:#94A3B8;">Sin prospectos aún</div>`:""}
+    <div id="prosp_lista">${buildProspCards(lista)}</div>
   </div></div>`;
 }
 
@@ -2410,6 +2450,7 @@ async function actualizarProducto(id){
 
 // modal: prospecto ────────────────────────────────────────────────
 function mNuevoProspecto(){
+  var estados=["📞 Por contactar","💬 Contactado","🤝 Interesado","❌ No interesado"];
   return`${mHeader("Nuevo Prospecto")}
   <div style="margin-bottom:12px;">
     <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Nombre del negocio *</label>
@@ -2442,10 +2483,29 @@ function mNuevoProspecto(){
       </select>
     </div>
   </div>
+  <div style="margin-bottom:12px;">
+    <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Estado</label>
+    <select id="pr_estado" style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:13px;outline:none;background:${CW};">
+      ${estados.map(e=>`<option>${e}</option>`).join("")}
+    </select>
+  </div>
+  <div style="display:flex;gap:8px;margin-bottom:12px;">
+    <div style="flex:1;">
+      <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Fecha visita</label>
+      <input id="pr_visita" type="text" placeholder="dd/mm/aaaa"
+        style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:14px;outline:none;"/>
+      <div style="font-size:10px;color:#94A3B8;margin-top:3px;">Crea pendiente automático</div>
+    </div>
+    <div style="flex:1;">
+      <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Próximo paso</label>
+      <input id="pr_paso" type="text" placeholder="Ej: llamar el lunes"
+        style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:14px;outline:none;"/>
+    </div>
+  </div>
   <div style="margin-bottom:16px;">
-    <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Próximo paso</label>
-    <input id="pr_paso" type="text" placeholder="Ej: llamar el lunes"
-      style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:14px;outline:none;"/>
+    <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Notas</label>
+    <textarea id="pr_notas" rows="2" placeholder="Notas adicionales..."
+      style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:14px;outline:none;resize:none;"></textarea>
   </div>
   <button onclick="guardarProspecto()"
     style="width:100%;background:${CG};border:none;border-radius:13px;padding:14px;
@@ -2455,13 +2515,28 @@ function mNuevoProspecto(){
 async function guardarProspecto(){
   var nombre=val("pr_nom");
   if(!nombre){toast("El nombre es obligatorio",CR);return;}
+  var fechaVisita=val("pr_visita");
   var data={nombre,dueno:val("pr_due"),tel:val("pr_tel"),zona:val("pr_zona"),
-    tipo:val("pr_tipo"),proximoPaso:val("pr_paso"),estado:"📞 Por contactar",
+    tipo:val("pr_tipo"),estado:val("pr_estado")||"📞 Por contactar",
+    proximoPaso:val("pr_paso"),notas:val("pr_notas"),
+    fechaVisita:fechaVisita||null,
     primerContacto:fmtF(),ts:firebase.firestore.FieldValue.serverTimestamp()};
   try{
     var ref=await db.collection("prospectos").add(data);
-    ST.prospectos.push({id:ref.id,...data});
-    toast("✓ Prospecto guardado",CG);setState({modal:null});
+    var pros={id:ref.id,...data};
+    ST.prospectos.push(pros);
+    // Auto-crear pendiente si se definió fecha de visita
+    if(fechaVisita){
+      var pData={tipo:"visita",descripcion:"Visita a prospecto: "+nombre,
+        fecha:fechaVisita,prospectoId:ref.id,completado:false,
+        creadoEn:fmtF(),ts:firebase.firestore.FieldValue.serverTimestamp()};
+      var pRef=await db.collection("pendientes").add(pData);
+      ST.pendientes.unshift({id:pRef.id,...pData});
+      toast("✓ Prospecto guardado — pendiente de visita creado",CG);
+    } else {
+      toast("✓ Prospecto guardado",CG);
+    }
+    setState({modal:null});
   }catch(e){toast("Error: "+e.message,CR);}
 }
 
