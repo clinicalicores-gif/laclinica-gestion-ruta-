@@ -132,6 +132,14 @@ function fmtF(d){
   var x=d||new Date();
   return String(x.getDate()).padStart(2,"0")+"/"+String(x.getMonth()+1).padStart(2,"0")+"/"+x.getFullYear();
 }
+function wa(tel){
+  if(!tel) return "";
+  var n=String(tel).replace(/\D/g,"");
+  if(n.startsWith("593")) return "https://wa.me/"+n;
+  if(n.startsWith("0")) return "https://wa.me/593"+n.slice(1);
+  if(n.length>=9) return "https://wa.me/593"+n;
+  return "";
+}
 
 function getPrecio(prod,tarifa){
   if(tarifa==="A") return parseFloat(prod.precioA||0);
@@ -1190,17 +1198,27 @@ function htmlPedidos(){
           style="background:${CG};border:none;border-radius:7px;padding:6px 12px;color:${CW};font-size:12px;font-weight:600;cursor:pointer;">✓ Entregar</button>`:""}
         ${(p.saldoPendiente||0)>0?`<button onclick="abrirCobro('${p.id}')"
           style="background:${CG};border:none;border-radius:7px;padding:6px 12px;color:${CW};font-size:12px;font-weight:600;cursor:pointer;">💵 Cobrar</button>`:""}
+        ${p.estado!=="cancelado"?`<button onclick="cambiarEstado('${p.id}','cancelado')"
+          style="background:#FEF2F2;border:1px solid #FECACA;border-radius:7px;padding:6px 10px;
+          color:${CR};font-size:11px;font-weight:600;cursor:pointer;">✕ Cancelar</button>`:""}
       </div>
     </div>`).join("")}
   </div></div>`;
 }
 
 async function cambiarEstado(id,estado){
+  var conf={
+    facturado:"¿Confirmar como facturado?",
+    despachado:"¿Confirmar como despachado?",
+    entregado:"¿Confirmar como entregado?",
+    cancelado:"⚠️ ¿Cancelar este pedido?\n\nEl registro quedará guardado permanentemente."
+  };
+  if(!confirm(conf[estado]||"¿Cambiar estado?")) return;
   try{
     await db.collection("pedidos").doc(id).update({estado,ts:firebase.firestore.FieldValue.serverTimestamp()});
     var idx=ST.pedidos.findIndex(p=>p.id===id);
     if(idx>=0) ST.pedidos[idx].estado=estado;
-    toast("Estado: "+estado,CG);render();
+    toast(estado==="cancelado"?"Pedido cancelado — registro guardado":"Estado: "+estado,estado==="cancelado"?CA:CG);render();
   }catch(e){toast("Error: "+e.message,CR);}
 }
 
@@ -1361,8 +1379,8 @@ function htmlClientesAdmin(){
                 style="background:#F1F5F9;border:none;border-radius:7px;padding:5px 9px;font-size:12px;cursor:pointer;">✏️</button>
               <button onclick="abrirFichaCliente('${c.id}')"
                 style="background:#F1F5F9;border:none;border-radius:7px;padding:5px 9px;font-size:12px;cursor:pointer;">📋</button>
-              ${c.tel?`<a href="tel:${h(c.tel)}"
-                style="background:#EFF6FF;border:none;border-radius:7px;padding:5px 9px;font-size:12px;text-decoration:none;">📞</a>`:""}
+              ${c.tel&&wa(c.tel)?`<a href="${wa(c.tel)}" target="_blank"
+                style="background:#DCFCE7;border:none;border-radius:7px;padding:5px 9px;font-size:12px;text-decoration:none;color:#16A34A;">💬</a>`:""}
             </div>
           </div>
         </div>
@@ -1397,6 +1415,12 @@ function htmlProspectos(){
               color:${CG};font-size:11px;font-weight:700;cursor:pointer;flex-shrink:0;white-space:nowrap;">
               → Cliente</button>`:`<span style="font-size:11px;color:${CG};font-weight:700;flex-shrink:0;">✅ Convertido</span>`}
           </div>
+          ${p.tel&&wa(p.tel)?`<div style="margin-top:8px;">
+            <a href="${wa(p.tel)}" target="_blank"
+              style="display:inline-flex;align-items:center;gap:5px;background:#DCFCE7;
+              border-radius:7px;padding:5px 11px;font-size:12px;font-weight:700;
+              color:#16A34A;text-decoration:none;">💬 ${h(p.tel)}</a>
+          </div>`:""}
         </div>`).join("")}
       </div>`;
     }).join("")}
@@ -2232,9 +2256,9 @@ function htmlCartera(){
           <button onclick="verPedidosDeCliente('${c.id}')"
             style="background:#F1F5F9;border:none;border-radius:9px;padding:9px 11px;
             font-size:11px;font-weight:700;color:${CN};cursor:pointer;">📦</button>
-          ${c.tel?`<a href="tel:${h(c.tel)}"
-            style="background:#EFF6FF;border:none;border-radius:9px;padding:9px 11px;
-            font-size:13px;text-decoration:none;color:${CB};">📞</a>`:""}
+          ${c.tel&&wa(c.tel)?`<a href="${wa(c.tel)}" target="_blank"
+            style="background:#DCFCE7;border:none;border-radius:9px;padding:9px 11px;
+            font-size:13px;text-decoration:none;color:#16A34A;">💬</a>`:""}
         </div>
       </div>`;
     }).join("")}
@@ -2425,13 +2449,19 @@ function htmlPendientes(){
         ✓ Completados (${comps.length})</summary>
       <div style="margin-top:8px;">
         ${comps.slice(0,20).map(p=>`<div style="background:#F8FAFC;border-radius:10px;padding:10px;
-          margin-bottom:6px;display:flex;align-items:center;gap:9px;opacity:0.6;">
+          margin-bottom:6px;display:flex;align-items:center;gap:9px;">
           <span style="font-size:16px;flex-shrink:0;">✅</span>
-          <div style="flex:1;min-width:0;">
-            <div style="font-size:12px;color:#64748B;text-decoration:line-through;
-              white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${h(p.descripcion||"")}</div>
-            <div style="font-size:10px;color:#94A3B8;">${h(p.fecha||"")}</div>
+          <div style="flex:1;min-width:0;opacity:0.65;">
+            <div style="display:flex;align-items:center;gap:5px;">
+              <div style="font-size:12px;color:#64748B;text-decoration:line-through;
+                flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${h(p.descripcion||"")}</div>
+              ${p.reactivado?`<span style="font-size:9px;background:#FFFBEB;color:${CA};border-radius:4px;padding:1px 5px;font-weight:700;white-space:nowrap;flex-shrink:0;">↩ Reactivado</span>`:""}
+            </div>
+            <div style="font-size:10px;color:#94A3B8;">${h(p.fecha||"")}${p.fechaCompletado?" · ✓ "+h(p.fechaCompletado):""}</div>
           </div>
+          <button onclick="reactivarPendiente('${p.id}')"
+            style="background:#FFFBEB;border:1px solid ${CA};border-radius:7px;padding:4px 8px;
+            color:${CA};font-size:10px;font-weight:700;cursor:pointer;flex-shrink:0;">↩</button>
         </div>`).join("")}
       </div>
     </details>`:""}
@@ -2439,11 +2469,21 @@ function htmlPendientes(){
 }
 
 async function completarPendiente(id){
+  if(!confirm("¿Marcar como completado?")) return;
   try{
-    await db.collection("pendientes").doc(id).update({completado:true});
+    await db.collection("pendientes").doc(id).update({completado:true,fechaCompletado:fmtF()});
     var idx=ST.pendientes.findIndex(p=>p.id===id);
-    if(idx>=0)ST.pendientes[idx].completado=true;
+    if(idx>=0){ST.pendientes[idx].completado=true;ST.pendientes[idx].fechaCompletado=fmtF();}
     toast("✓ Completado",CG);render();
+  }catch(e){toast("Error: "+e.message,CR);}
+}
+async function reactivarPendiente(id){
+  if(!confirm("¿Reactivar este pendiente?")) return;
+  try{
+    await db.collection("pendientes").doc(id).update({completado:false,reactivado:true});
+    var idx=ST.pendientes.findIndex(p=>p.id===id);
+    if(idx>=0){ST.pendientes[idx].completado=false;ST.pendientes[idx].reactivado=true;}
+    toast("↩ Pendiente reactivado",CA);render();
   }catch(e){toast("Error: "+e.message,CR);}
 }
 
@@ -2466,18 +2506,22 @@ function mNuevoPendiente(){
       style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:14px;
       outline:none;resize:none;font-family:'DM Sans',sans-serif;"></textarea>
   </div>
-  <div style="display:flex;gap:8px;margin-bottom:16px;">
-    <div style="flex:1;">
-      <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Fecha</label>
-      <input id="pend_fecha" type="date" value="${new Date().toISOString().split("T")[0]}"
+  <div style="margin-bottom:12px;">
+    <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Fecha</label>
+    <input id="pend_fecha" type="date" value="${new Date().toISOString().split("T")[0]}"
+      style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:14px;outline:none;"/>
+  </div>
+  <div style="margin-bottom:16px;">
+    <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Cliente (opcional)</label>
+    <div style="position:relative;">
+      <input id="pend_cli_search" type="text" placeholder="Buscar cliente..." autocomplete="off"
+        oninput="filtrarCliPend(this.value)"
         style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:14px;outline:none;"/>
-    </div>
-    <div style="flex:1;">
-      <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Cliente</label>
-      <select id="pend_cliente" style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:13px;outline:none;background:${CW};">
-        <option value="">Sin cliente</option>
-        ${ST.clientes.sort((a,b)=>(a.nombre||"").localeCompare(b.nombre||"")).map(c=>`<option value="${c.id}">${h(c.nombre)}</option>`).join("")}
-      </select>
+      <input type="hidden" id="pend_cliente" value=""/>
+      <div id="pend_cli_list" style="display:none;position:absolute;top:100%;left:0;right:0;
+        background:${CW};border:2px solid #E2E8F0;border-top:none;
+        border-radius:0 0 11px 11px;z-index:200;max-height:180px;overflow-y:auto;
+        box-shadow:0 4px 12px rgba(0,0,0,0.12);"></div>
     </div>
   </div>
   <button onclick="guardarPendiente()"
@@ -2507,6 +2551,30 @@ async function guardarPendiente(){
     ST.pendientes.unshift({id:ref.id,...data});
     toast("✓ Pendiente guardado",CG);setState({modal:null});
   }catch(e){toast("Error: "+e.message,CR);}
+}
+function filtrarCliPend(v){
+  var list=$("pend_cli_list");
+  var hid=$("pend_cliente");
+  if(!list) return;
+  if(hid) hid.value="";
+  if(!v){list.style.display="none";return;}
+  var q=v.toLowerCase();
+  var matches=ST.clientes.filter(c=>(c.nombre||"").toLowerCase().includes(q)||(c.encargado||"").toLowerCase().includes(q)).slice(0,8);
+  if(!matches.length){list.style.display="none";return;}
+  list.style.display="block";
+  list.innerHTML=matches.map(c=>`<div onclick="selCliPend('${c.id}','${h(c.nombre).replace(/'/g,"\\'")}')"
+    style="padding:10px 12px;cursor:pointer;border-bottom:1px solid #F1F5F9;font-size:13px;color:#0F2240;font-weight:600;"
+    onmouseover="this.style.background='#F1F5F9'" onmouseout="this.style.background=''">
+    ${h(c.nombre)}${c.encargado?`<span style="color:#94A3B8;font-weight:400;font-size:11px;"> · ${h(c.encargado)}</span>`:""}
+  </div>`).join("");
+}
+function selCliPend(id,nombre){
+  var inp=$("pend_cli_search");
+  var hid=$("pend_cliente");
+  var list=$("pend_cli_list");
+  if(inp) inp.value=nombre;
+  if(hid) hid.value=id;
+  if(list) list.style.display="none";
 }
 
 // ── FICHA DE VISITA + ESTADÍSTICAS POR CLIENTE ─────────────────────
@@ -2651,9 +2719,9 @@ function mFichaCliente(c){
     ${deuda>0?`<button onclick="setState({modal:null});setTimeout(()=>abrirCobroCliente('${c.id}'),100)"
       style="flex:1;min-width:70px;background:${CG};border:none;border-radius:12px;padding:13px;
       color:${CW};font-size:13px;font-weight:700;cursor:pointer;">💵 Cobrar</button>`:""}
-    ${c.tel?`<a href="tel:${h(c.tel)}" onclick="setState({modal:null})"
-      style="background:#EFF6FF;border:none;border-radius:12px;padding:13px 14px;
-      font-size:16px;text-decoration:none;display:flex;align-items:center;">📞</a>`:""}
+    ${c.tel&&wa(c.tel)?`<a href="${wa(c.tel)}" target="_blank"
+      style="background:#DCFCE7;border:none;border-radius:12px;padding:13px 14px;
+      font-size:16px;text-decoration:none;display:flex;align-items:center;">💬</a>`:""}
   </div>`;
 }
 
@@ -2675,6 +2743,7 @@ async function addPrecioEsp(clienteId){
 }
 
 async function delPrecioEsp(clienteId,prodId){
+  if(!confirm("¿Eliminar este precio especial?")) return;
   var c=ST.clientes.find(x=>x.id===clienteId);if(!c)return;
   var peps=(c.preciosEspeciales||[]).filter(x=>x.productoId!==prodId);
   try{
