@@ -57,6 +57,7 @@ var ST={
   filtroCobro:"todos", ordenCobro:"monto",
   filtroProspecto:"todos",
   searchCatAdmin:"", filtroCatAdmin:"todos",
+  searchClAdmin:"",
   modal:null, toast:null, toastT:null,
   _saving:false
 };
@@ -1516,8 +1517,60 @@ function compartirListaBodega(){
 }
 
 // ── CLIENTES ADMIN ────────────────────────────────────────────────
+var _cladminTimer=null;
+function debClAdmin(v){
+  clearTimeout(_cladminTimer);
+  ST.searchClAdmin=v;
+  _cladminTimer=setTimeout(()=>{
+    var q=v.toLowerCase();
+    var filtro=ST.filtroClientes||"todos";
+    var todos=ST.clientes.filter(c=>c.estado!=="inactivo");
+    var inactivos21=todos.filter(c=>{var peds=ST.pedidos.filter(p=>p.clienteId===c.id);if(!peds.length)return true;var d=diasDesde(peds[0].fecha);return d!==null&&d>=21;});
+    var conDeuda=todos.filter(c=>(c.pendiente||0)>0.01);
+    var lista=filtro==="inactivos"?inactivos21:filtro==="deuda"?conDeuda:todos;
+    if(q) lista=lista.filter(c=>(c.nombre||"").toLowerCase().includes(q)||(c.encargado||"").toLowerCase().includes(q)||(c.zona||"").toLowerCase().includes(q));
+    lista=lista.sort((a,b)=>(a.nombre||"").localeCompare(b.nombre||""));
+    var el=$("cladmin_lista");
+    if(el) el.innerHTML=buildCladminCards(lista,inactivos21);
+  },250);
+}
+function buildCladminCards(lista,inactivos21){
+  if(!lista.length) return`<div style="text-align:center;padding:40px;color:#94A3B8;font-size:14px;">Sin resultados</div>`;
+  return lista.map(c=>{
+    var dias21=inactivos21.find(x=>x.id===c.id);
+    var d=ST.pedidos.filter(p=>p.clienteId===c.id)[0];
+    var dds=d?diasDesde(d.fecha):null;
+    return`<div style="background:${CW};border-radius:13px;padding:13px;margin-bottom:8px;
+      box-shadow:0 1px 3px rgba(0,0,0,0.06);${dias21?"border-left:3px solid "+CA:""} ">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div style="flex:1;min-width:0;">
+          <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;">
+            <div style="font-size:14px;font-weight:700;color:${CN};">${h(c.nombre)}</div>
+            ${dias21?`<span style="font-size:9px;background:#FEF9C3;color:#B45309;padding:2px 6px;border-radius:10px;font-weight:800;">
+              ${dds===null?"Nuevo":dds+"d sin comprar"}</span>`:""}
+          </div>
+          <div style="font-size:11px;color:#64748B;">${h(c.encargado||"")} · ${h(c.zona||"")} · Tarifa ${h(c.precio||"C")}${c.sistema?" · "+h(c.sistema):""}</div>
+          ${c.tel?`<div style="font-size:11px;color:#64748B;">${h(c.tel)}${c.tel2?" · "+h(c.tel2):""}</div>`:""}
+          ${c.cedula?`<div style="font-size:10px;color:#94A3B8;">CI: ${h(c.cedula)}</div>`:""}
+        </div>
+        <div style="text-align:right;flex-shrink:0;margin-left:10px;">
+          ${(c.pendiente||0)>0?`<div style="color:${CR};font-size:12px;font-weight:700;">${fmtM(c.pendiente)}</div>`:""}
+          <div style="display:flex;gap:5px;margin-top:5px;">
+            <button onclick="editCl('${c.id}')"
+              style="background:#F1F5F9;border:none;border-radius:7px;padding:5px 9px;font-size:12px;cursor:pointer;">✏️</button>
+            <button onclick="abrirFichaCliente('${c.id}')"
+              style="background:#F1F5F9;border:none;border-radius:7px;padding:5px 9px;font-size:12px;cursor:pointer;">📋</button>
+            ${c.tel&&wa(c.tel)?`<a href="${wa(c.tel)}" target="_blank"
+              style="background:#DCFCE7;border:none;border-radius:7px;padding:5px 9px;font-size:12px;text-decoration:none;color:#16A34A;">💬</a>`:""}
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }).join("");
+}
 function htmlClientesAdmin(){
   var filtro=ST.filtroClientes||"todos";
+  var q=(ST.searchClAdmin||"").toLowerCase();
   var todos=ST.clientes.filter(c=>c.estado!=="inactivo").sort((a,b)=>(a.nombre||"").localeCompare(b.nombre||""));
   var inactivos21=todos.filter(c=>{
     var peds=ST.pedidos.filter(p=>p.clienteId===c.id);
@@ -1527,50 +1580,32 @@ function htmlClientesAdmin(){
   });
   var conDeuda=todos.filter(c=>(c.pendiente||0)>0.01);
   var lista=filtro==="inactivos"?inactivos21:filtro==="deuda"?conDeuda:todos;
+  if(q) lista=lista.filter(c=>(c.nombre||"").toLowerCase().includes(q)||(c.encargado||"").toLowerCase().includes(q)||(c.zona||"").toLowerCase().includes(q));
   return`<div class="fade">${subHeader("Clientes","🏪")}
-  <div style="padding:0 14px 4px;overflow-x:auto;white-space:nowrap;background:${CW};border-bottom:1px solid #E2E8F0;">
-    ${[["todos","Todos ("+todos.length+")"],["inactivos","⚠️ Sin comprar 21d ("+inactivos21.length+")"],["deuda","💰 Con deuda ("+conDeuda.length+")"]].map(([v,l])=>`
-    <button onclick="setState({filtroClientes:'${v}'})"
-      style="display:inline-block;margin:8px 4px 8px 0;padding:5px 12px;border-radius:20px;border:none;
-      background:${filtro===v?CN:CW};color:${filtro===v?CW:"#64748B"};border:1px solid ${filtro===v?CN:"#E2E8F0"};
-      font-size:12px;font-weight:700;cursor:pointer;">${l}</button>`).join("")}
+  <div style="background:${CW};padding:10px 14px;border-bottom:1px solid #E2E8F0;">
+    <div style="position:relative;margin-bottom:8px;">
+      <span style="position:absolute;left:11px;top:50%;transform:translateY(-50%);font-size:13px;">🔍</span>
+      <input id="s_cladmin" type="text" placeholder="Buscar por nombre, encargado, zona..."
+        value="${h(ST.searchClAdmin||"")}" oninput="debClAdmin(this.value)"
+        style="width:100%;border:2px solid #E2E8F0;border-radius:10px;padding:9px 12px 9px 33px;font-size:13px;outline:none;"/>
+    </div>
+    <div style="overflow-x:auto;white-space:nowrap;">
+      ${[["todos","Todos ("+todos.length+")"],["inactivos","⚠️ Sin comprar 21d ("+inactivos21.length+")"],["deuda","💰 Con deuda ("+conDeuda.length+")"]].map(([v,l])=>`
+      <button onclick="setState({filtroClientes:'${v}',searchClAdmin:''})"
+        style="display:inline-block;margin:0 4px 0 0;padding:5px 12px;border-radius:20px;
+        background:${filtro===v?CN:CW};color:${filtro===v?CW:"#64748B"};border:1px solid ${filtro===v?CN:"#E2E8F0"};
+        font-size:12px;font-weight:700;cursor:pointer;">${l}</button>`).join("")}
+    </div>
   </div>
   <div style="padding:14px 14px 80px;">
     <button onclick="setState({modal:{tipo:'nuevoCliente'}})"
       style="width:100%;background:${CN};border:none;border-radius:13px;padding:13px;
       color:${CW};font-size:15px;font-weight:700;cursor:pointer;margin-bottom:14px;">+ Nuevo Cliente</button>
-    ${!lista.length?`<div style="text-align:center;padding:40px;color:#94A3B8;font-size:14px;">
-      ${filtro==="inactivos"?"🎉 Todos los clientes compraron recientemente":filtro==="deuda"?"🎉 Sin deudas pendientes":"Sin clientes"}</div>`:""}
-    ${lista.map(c=>{
-      var dias21=inactivos21.find(x=>x.id===c.id);
-      var d=ST.pedidos.filter(p=>p.clienteId===c.id)[0];
-      var dds=d?diasDesde(d.fecha):null;
-      return`<div style="background:${CW};border-radius:13px;padding:13px;margin-bottom:8px;
-        box-shadow:0 1px 3px rgba(0,0,0,0.06);${dias21?"border-left:3px solid "+CA:""} ">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-          <div style="flex:1;min-width:0;">
-            <div style="display:flex;align-items:center;gap:7px;">
-              <div style="font-size:14px;font-weight:700;color:${CN};">${h(c.nombre)}</div>
-              ${dias21?`<span style="font-size:9px;background:#FEF9C3;color:#B45309;padding:2px 6px;border-radius:10px;font-weight:800;">
-                ${dds===null?"Nuevo":dds+"d sin comprar"}</span>`:""}
-            </div>
-            <div style="font-size:11px;color:#64748B;">${h(c.encargado||"")} · ${h(c.zona||"")} · Tarifa ${h(c.precio||"C")}</div>
-            ${c.tel?`<div style="font-size:11px;color:#64748B;">${h(c.tel)}</div>`:""}
-          </div>
-          <div style="text-align:right;flex-shrink:0;margin-left:10px;">
-            ${(c.pendiente||0)>0?`<div style="color:${CR};font-size:12px;font-weight:700;">${fmtM(c.pendiente)}</div>`:""}
-            <div style="display:flex;gap:5px;margin-top:5px;">
-              <button onclick="editCl('${c.id}')"
-                style="background:#F1F5F9;border:none;border-radius:7px;padding:5px 9px;font-size:12px;cursor:pointer;">✏️</button>
-              <button onclick="abrirFichaCliente('${c.id}')"
-                style="background:#F1F5F9;border:none;border-radius:7px;padding:5px 9px;font-size:12px;cursor:pointer;">📋</button>
-              ${c.tel&&wa(c.tel)?`<a href="${wa(c.tel)}" target="_blank"
-                style="background:#DCFCE7;border:none;border-radius:7px;padding:5px 9px;font-size:12px;text-decoration:none;color:#16A34A;">💬</a>`:""}
-            </div>
-          </div>
-        </div>
-      </div>`;
-    }).join("")}
+    <div id="cladmin_lista">
+      ${!lista.length?`<div style="text-align:center;padding:40px;color:#94A3B8;font-size:14px;">
+        ${filtro==="inactivos"?"🎉 Todos los clientes compraron recientemente":filtro==="deuda"?"🎉 Sin deudas pendientes":"Sin clientes"}</div>`:""}
+      ${buildCladminCards(lista,inactivos21)}
+    </div>
   </div></div>`;
 }
 function editCl(id){var c=ST.clientes.find(x=>x.id===id);if(!c)return;setState({modal:{tipo:"editarCliente",cliente:c}});}
@@ -2075,9 +2110,30 @@ function camposCl(pre){
         style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:14px;outline:none;"/>
     </div>
     <div style="flex:1;">
+      <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">2do Teléfono</label>
+      <input id="cl_tel2" type="tel" placeholder="09..." value="${h(pre?.tel2||"")}"
+        style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:14px;outline:none;"/>
+    </div>
+  </div>
+  <div style="display:flex;gap:8px;margin-bottom:12px;">
+    <div style="flex:1;">
+      <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Cédula del contacto</label>
+      <input id="cl_cedula" type="text" placeholder="Cédula" value="${h(pre?.cedula||"")}"
+        style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:14px;outline:none;"/>
+    </div>
+    <div style="flex:1;">
       <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">RUC</label>
       <input id="cl_ruc" type="text" placeholder="RUC" value="${h(pre?.ruc||"")}"
         style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:14px;outline:none;"/>
+    </div>
+  </div>
+  <div style="display:flex;gap:8px;margin-bottom:12px;">
+    <div style="flex:1;">
+      <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Sistema</label>
+      <select id="cl_sistema" style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:13px;outline:none;background:${CW};">
+        <option value="">No definido</option>
+        ${["Perseo","Importados","Mixto"].map(s=>`<option${(pre?.sistema||"")=== s?" selected":""}>${s}</option>`).join("")}
+      </select>
     </div>
   </div>
   <div style="margin-bottom:12px;">
@@ -2150,7 +2206,8 @@ function mNuevoCliente(){
 async function guardarNuevoCliente(){
   var nombre=val("cl_nom");
   if(!nombre){toast("El nombre es obligatorio",CR);return;}
-  var data={nombre,encargado:val("cl_enc"),tel:val("cl_tel"),ruc:val("cl_ruc"),
+  var data={nombre,encargado:val("cl_enc"),tel:val("cl_tel"),tel2:val("cl_tel2")||"",
+    cedula:val("cl_cedula")||"",ruc:val("cl_ruc"),sistema:val("cl_sistema")||"",
     dir:val("cl_dir"),zona:val("cl_zona")||"Centro",precio:val("cl_precio")||"C",
     ordenRuta:parseInt(val("cl_orden")||999),limiteCred:parseFloat(val("cl_lim")||0),
     condicionesPago:val("cl_cond"),diasVisita:JSON.parse(val("cl_dias")||"[]"),
@@ -2177,7 +2234,8 @@ function mEditarCliente(c){
 async function actualizarCliente(id){
   var nombre=val("cl_nom");
   if(!nombre){toast("El nombre es obligatorio",CR);return;}
-  var data={nombre,encargado:val("cl_enc"),tel:val("cl_tel"),ruc:val("cl_ruc"),
+  var data={nombre,encargado:val("cl_enc"),tel:val("cl_tel"),tel2:val("cl_tel2")||"",
+    cedula:val("cl_cedula")||"",ruc:val("cl_ruc"),sistema:val("cl_sistema")||"",
     dir:val("cl_dir"),zona:val("cl_zona"),precio:val("cl_precio"),
     ordenRuta:parseInt(val("cl_orden")||999),limiteCred:parseFloat(val("cl_lim")||0),
     condicionesPago:val("cl_cond"),diasVisita:JSON.parse(val("cl_dias")||"[]"),
@@ -3299,10 +3357,12 @@ function mNuevoClienteDesdeProspecto(pros){
 async function guardarClienteDesdeProspecto(prospectoId){
   var nombre=val("cl_nom");
   if(!nombre){toast("El nombre es obligatorio",CR);return;}
-  var data={nombre,encargado:val("cl_enc"),tel:val("cl_tel"),ruc:val("cl_ruc"),
+  var data={nombre,encargado:val("cl_enc"),tel:val("cl_tel"),tel2:val("cl_tel2")||"",
+    cedula:val("cl_cedula")||"",ruc:val("cl_ruc"),sistema:val("cl_sistema")||"",
     dir:val("cl_dir"),zona:val("cl_zona")||"Centro",precio:val("cl_precio")||"C",
     ordenRuta:parseInt(val("cl_orden")||999),limiteCred:parseFloat(val("cl_lim")||0),
     condicionesPago:val("cl_cond"),diasVisita:JSON.parse(val("cl_dias")||"[]"),
+    diaCobro:val("cl_diaCobro")||"",
     estado:"activo",pendiente:0,monto:0,ts:firebase.firestore.FieldValue.serverTimestamp()};
   try{
     var ref=await db.collection("clientes").add(data);
