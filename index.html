@@ -57,7 +57,7 @@ var ST={
   filtroCobro:"todos", ordenCobro:"monto",
   filtroProspecto:"todos",
   searchCatAdmin:"", filtroCatAdmin:"todos",
-  searchClAdmin:"", searchPend:"", searchProspecto:"", searchDev:"",
+  searchClAdmin:"", searchPend:"", searchProspecto:"", searchDev:"", searchGasto:"", filtroGasto:"todos",
   modal:null, toast:null, toastT:null,
   _saving:false
 };
@@ -1717,27 +1717,83 @@ function htmlProspectos(){
 }
 
 // ── GASTOS ────────────────────────────────────────────────────────
+var _gastoTimer=null;
+function debGasto(v){
+  clearTimeout(_gastoTimer);
+  ST.searchGasto=v;
+  _gastoTimer=setTimeout(()=>{
+    var q=v.toLowerCase();
+    var filtroG=ST.filtroGasto||"todos";
+    var hoyStr=fmtF();
+    var lista=ST.gastos.filter(g=>{
+      if(filtroG==="hoy"&&g.fecha!==hoyStr) return false;
+      if(filtroG==="empresa"&&g.asume!=="empresa") return false;
+      if(filtroG==="reembolso"&&g.reembolso!==true) return false;
+      if(q&&!(g.tipo||"").toLowerCase().includes(q)&&!(g.descripcion||"").toLowerCase().includes(q)) return false;
+      return true;
+    });
+    var el=$("gasto_lista");
+    if(el) el.innerHTML=buildGastoCards(lista);
+  },300);
+}
+function buildGastoCards(lista){
+  if(!lista.length) return`<div style="text-align:center;padding:48px;color:#94A3B8;">Sin gastos</div>`;
+  return lista.map(g=>`<div style="background:${CW};border-radius:12px;padding:12px;margin-bottom:7px;
+    box-shadow:0 1px 3px rgba(0,0,0,0.06);display:flex;justify-content:space-between;align-items:center;">
+    <div style="flex:1;min-width:0;">
+      <div style="font-size:14px;font-weight:700;color:${CN};">${h(g.tipo||"")}</div>
+      <div style="font-size:11px;color:#64748B;">${h(g.descripcion||"")} · ${h(g.fecha||"")}</div>
+      <div style="display:flex;gap:5px;margin-top:3px;flex-wrap:wrap;">
+        ${g.asume==="empresa"?`<span style="font-size:10px;background:#DBEAFE;color:${CB};border-radius:5px;padding:1px 6px;font-weight:700;">Empresa</span>`:`<span style="font-size:10px;background:#F1F5F9;color:#64748B;border-radius:5px;padding:1px 6px;font-weight:700;">Vendedor</span>`}
+        ${g.reembolso?`<span style="font-size:10px;background:${g.reembolsoEstado==="pagado"?"#DCFCE7":"#FEF3C7"};color:${g.reembolsoEstado==="pagado"?CG:"#92400E"};border-radius:5px;padding:1px 6px;font-weight:700;">${g.reembolsoEstado==="pagado"?"✓ Reembolsado":"⏳ Pend. reembolso"}</span>`:""}
+      </div>
+    </div>
+    <div style="font-size:15px;font-weight:800;color:${CR};flex-shrink:0;margin-left:8px;">${fmtM(g.monto)}</div>
+  </div>`).join("");
+}
 function htmlGastos(){
   var hoyStr=fmtF();
+  var filtroG=ST.filtroGasto||"todos";
+  var q=(ST.searchGasto||"").toLowerCase();
   var totalHoy=ST.gastos.filter(g=>g.fecha===hoyStr).reduce((s,g)=>s+(g.monto||0),0);
+  var pendReembolso=ST.gastos.filter(g=>g.reembolso&&g.reembolsoEstado!=="pagado").reduce((s,g)=>s+(g.monto||0),0);
+  var lista=ST.gastos.filter(g=>{
+    if(filtroG==="hoy"&&g.fecha!==hoyStr) return false;
+    if(filtroG==="empresa"&&g.asume!=="empresa") return false;
+    if(filtroG==="reembolso"&&g.reembolso!==true) return false;
+    if(q&&!(g.tipo||"").toLowerCase().includes(q)&&!(g.descripcion||"").toLowerCase().includes(q)) return false;
+    return true;
+  });
+  var chips=[["todos","Todos"],["hoy","Hoy"],["empresa","Empresa"],["reembolso","Reembolsables"]];
   return`<div class="fade">${subHeader("Gastos de Ruta","💸")}
   <div style="padding:14px 14px 80px;">
-    <div style="background:${CN};border-radius:13px;padding:14px;margin-bottom:14px;text-align:center;">
-      <div style="font-size:11px;color:rgba(255,255,255,0.65);">Gastos de hoy</div>
-      <div style="font-size:26px;font-weight:800;color:${CW};">${fmtM(totalHoy)}</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
+      <div style="background:${CN};border-radius:13px;padding:13px;text-align:center;">
+        <div style="font-size:11px;color:rgba(255,255,255,0.65);">Gastos hoy</div>
+        <div style="font-size:22px;font-weight:800;color:${CW};">${fmtM(totalHoy)}</div>
+      </div>
+      <div style="background:${pendReembolso>0?CA:CG};border-radius:13px;padding:13px;text-align:center;">
+        <div style="font-size:11px;color:rgba(255,255,255,0.65);">Pend. reembolso</div>
+        <div style="font-size:22px;font-weight:800;color:${CW};">${fmtM(pendReembolso)}</div>
+      </div>
+    </div>
+    <div style="overflow-x:auto;white-space:nowrap;margin-bottom:10px;">
+      ${chips.map(([v,l])=>`<button onclick="setState({filtroGasto:'${v}'})"
+        style="display:inline-block;margin:0 4px 0 0;padding:5px 12px;border-radius:20px;
+        background:${filtroG===v?CN:CW};color:${filtroG===v?CW:"#64748B"};
+        border:1px solid ${filtroG===v?CN:"#E2E8F0"};font-size:12px;font-weight:700;cursor:pointer;">${l}</button>`).join("")}
+    </div>
+    <div style="position:relative;margin-bottom:10px;">
+      <span style="position:absolute;left:11px;top:50%;transform:translateY(-50%);font-size:14px;">🔍</span>
+      <input id="s_gasto" type="text" placeholder="Buscar tipo o descripción..."
+        value="${h(ST.searchGasto||"")}" oninput="debGasto(this.value)"
+        style="width:100%;border:2px solid #E2E8F0;border-radius:10px;
+        padding:10px 12px 10px 33px;font-size:13px;outline:none;"/>
     </div>
     <button onclick="setState({modal:{tipo:'nuevoGasto'}})"
       style="width:100%;background:${CN};border:none;border-radius:13px;padding:13px;
       color:${CW};font-size:15px;font-weight:700;cursor:pointer;margin-bottom:14px;">+ Registrar Gasto</button>
-    ${ST.gastos.slice(0,50).map(g=>`<div style="background:${CW};border-radius:12px;padding:12px;margin-bottom:7px;
-      box-shadow:0 1px 3px rgba(0,0,0,0.06);display:flex;justify-content:space-between;align-items:center;">
-      <div>
-        <div style="font-size:14px;font-weight:700;color:${CN};">${h(g.tipo||"")}</div>
-        <div style="font-size:11px;color:#64748B;">${h(g.descripcion||"")} · ${h(g.fecha||"")}</div>
-      </div>
-      <div style="font-size:15px;font-weight:800;color:${CR};">${fmtM(g.monto)}</div>
-    </div>`).join("")}
-    ${!ST.gastos.length?`<div style="text-align:center;padding:48px;color:#94A3B8;">Sin gastos registrados</div>`:""}
+    <div id="gasto_lista">${buildGastoCards(lista)}</div>
   </div></div>`;
 }
 
@@ -2585,6 +2641,19 @@ async function guardarProspecto(){
 }
 
 // modal: gasto ────────────────────────────────────────────────────
+function setGaAsume(v){
+  $("ga_asume").value=v;
+  ["ga_asume_vend","ga_asume_emp"].forEach(id=>{
+    var btn=$(id);if(!btn)return;
+    var active=id==="ga_asume_vend"?v==="vendedor":v==="empresa";
+    btn.style.background=active?CN:CW;
+    btn.style.color=active?CW:"#64748B";
+    btn.style.borderColor=active?CN:"#E2E8F0";
+  });
+  // Si empresa asume, mostrar checkbox reembolso
+  var rw=$("ga_reembolso_w");
+  if(rw) rw.style.display=v==="vendedor"?"block":"none";
+}
 function mNuevoGasto(){
   return`${mHeader("Registrar Gasto")}
   <div style="margin-bottom:12px;">
@@ -2598,10 +2667,30 @@ function mNuevoGasto(){
     <input id="ga_desc" type="text" placeholder="Descripción"
       style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:14px;outline:none;"/>
   </div>
-  <div style="margin-bottom:16px;">
+  <div style="margin-bottom:12px;">
     <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Monto *</label>
     <input id="ga_monto" type="number" step="0.01" placeholder="0.00"
       style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:20px;font-weight:700;outline:none;"/>
+  </div>
+  <div style="margin-bottom:12px;">
+    <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">¿Quién asume?</label>
+    <input type="hidden" id="ga_asume" value="vendedor"/>
+    <div style="display:flex;gap:8px;">
+      <button id="ga_asume_vend" onclick="setGaAsume('vendedor')"
+        style="flex:1;padding:11px;border:2px solid ${CN};border-radius:10px;
+        background:${CN};color:${CW};font-size:13px;font-weight:700;cursor:pointer;">
+        👤 Vendedor</button>
+      <button id="ga_asume_emp" onclick="setGaAsume('empresa')"
+        style="flex:1;padding:11px;border:2px solid #E2E8F0;border-radius:10px;
+        background:${CW};color:#64748B;font-size:13px;font-weight:700;cursor:pointer;">
+        🏢 Empresa</button>
+    </div>
+  </div>
+  <div id="ga_reembolso_w" style="margin-bottom:16px;">
+    <label style="display:flex;align-items:center;gap:10px;font-size:13px;font-weight:600;color:${CN};cursor:pointer;">
+      <input type="checkbox" id="ga_reembolso" style="width:18px;height:18px;cursor:pointer;"/>
+      Solicitar reembolso a empresa
+    </label>
   </div>
   <button onclick="guardarGasto()"
     style="width:100%;background:${CG};border:none;border-radius:13px;padding:14px;
@@ -2611,7 +2700,11 @@ function mNuevoGasto(){
 async function guardarGasto(){
   var monto=parseFloat(val("ga_monto")||0);
   if(!monto||monto<=0){toast("Ingresá un monto",CR);return;}
+  var asume=$("ga_asume")?$("ga_asume").value:"vendedor";
+  var reembolso=$("ga_reembolso")?$("ga_reembolso").checked:false;
   var data={tipo:val("ga_tipo")||"Otro",descripcion:val("ga_desc"),monto,
+    asume,reembolso:reembolso&&asume==="vendedor",
+    reembolsoEstado:reembolso&&asume==="vendedor"?"pendiente":null,
     vendedor:ST.perfil?.nombre||"",fecha:fmtF(),ts:firebase.firestore.FieldValue.serverTimestamp()};
   try{
     var ref=await db.collection("gastos").add(data);
