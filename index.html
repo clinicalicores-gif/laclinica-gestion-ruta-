@@ -49,7 +49,7 @@ var ST={
   loading:true, user:null, perfil:null,
   tab:"ruta",
   clientes:[], pedidos:[], catalogo:[], usuarios:[],
-  prospectos:[], gastos:[], devoluciones:[],
+  prospectos:[], gastos:[], devoluciones:[], pendientes:[],
   clienteActivo:null,
   carrito:[],
   sistemaCarrito:"Perseo",
@@ -90,6 +90,20 @@ function toast(msg,color,dur){
 }
 
 function fmtM(n){return"$"+parseFloat(n||0).toFixed(2);}
+function fmtNota(n){return"#"+String(n||0).padStart(3,"0");}
+function getNextNota(){
+  var n=(parseInt(localStorage.getItem("vr_ultimo_numero_nota")||"0"))+1;
+  localStorage.setItem("vr_ultimo_numero_nota",String(n));
+  return n;
+}
+function fechaPasada(fechaStr){
+  if(!fechaStr)return false;
+  var pts=fechaStr.split("/");
+  if(pts.length!==3)return false;
+  var d=new Date(parseInt(pts[2]),parseInt(pts[1])-1,parseInt(pts[0]));
+  var hoy=new Date();hoy.setHours(0,0,0,0);
+  return d<hoy;
+}
 function fmtF(d){
   var x=d||new Date();
   return String(x.getDate()).padStart(2,"0")+"/"+String(x.getMonth()+1).padStart(2,"0")+"/"+x.getFullYear();
@@ -219,6 +233,7 @@ function htmlApp(){
     ${tab==="devoluciones"? htmlDevoluciones():""}
     ${tab==="catalogo_admin"? htmlCatalogoAdmin():""}
     ${tab==="cartera"      ? htmlCartera()     :""}
+    ${tab==="pendientes"   ? htmlPendientes()  :""}
     ${tab==="usuarios"  ? htmlUsuarios()  : ""}
   </div>
 
@@ -345,12 +360,27 @@ function htmlRuta(){
       </div>
     </div>
 
-    <button onclick="setState({tab:'catalogo'})"
-      style="width:100%;background:${CB};border:none;border-radius:13px;padding:13px;
-      color:${CW};font-size:15px;font-weight:800;cursor:pointer;margin-bottom:12px;
-      display:flex;align-items:center;justify-content:center;gap:8px;">
-      🛒 Nuevo Pedido
-    </button>
+    <div style="display:flex;gap:8px;margin-bottom:12px;">
+      <button onclick="setState({tab:'catalogo'})"
+        style="flex:2;background:${CB};border:none;border-radius:13px;padding:13px;
+        color:${CW};font-size:15px;font-weight:800;cursor:pointer;
+        display:flex;align-items:center;justify-content:center;gap:8px;">
+        🛒 Nuevo Pedido
+      </button>
+      <button onclick="setState({modal:{tipo:'nuevoPendiente'}})"
+        style="flex:1;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);
+        border-radius:13px;padding:13px;color:${CW};font-size:13px;font-weight:700;cursor:pointer;
+        display:flex;align-items:center;justify-content:center;gap:5px;">
+        📋 Pendiente
+      </button>
+    </div>
+    ${(()=>{var venc=ST.pendientes.filter(p=>!p.completado&&fechaPasada(p.fecha)).length;
+    return venc>0?`<button onclick="setState({tab:'pendientes'})"
+      style="width:100%;background:${CR};border:none;border-radius:11px;padding:9px 13px;
+      color:${CW};font-size:12px;font-weight:700;cursor:pointer;margin-bottom:10px;
+      display:flex;align-items:center;justify-content:space-between;">
+      <span>⚠️ ${venc} pendiente${venc!==1?"s":""} vencido${venc!==1?"s":""}</span><span>Ver →</span>
+    </button>`:""})()}
 
     <div style="position:relative;">
       <span style="position:absolute;left:13px;top:50%;transform:translateY(-50%);font-size:15px;">🔍</span>
@@ -769,15 +799,15 @@ async function guardarPedido(){
   var notas=val("gp_notas")||"";
   var total=ST.carrito.reduce((s,i)=>s+i.subtotal,0);
   var sub=total/1.15;
+  var nNota=getNextNota();
+  var vendedorNombre=ST.perfil?.nombre||ST.user?.email||"";
+  var prodsCopy=ST.carrito.map(i=>({codigo:i.codigo,nombre:i.nombre,cantidad:i.cantidad,precioUnitario:i.precio,subtotal:i.subtotal,sistema:i.sistema}));
   try{
     var ref=await db.collection("pedidos").add({
       cliente:ST.clienteActivo.nombre,
       clienteId:ST.clienteActivo.id,
-      vendedor:ST.perfil?.nombre||ST.user?.email||"",
-      productos:ST.carrito.map(i=>({
-        codigo:i.codigo,nombre:i.nombre,cantidad:i.cantidad,
-        precioUnitario:i.precio,subtotal:i.subtotal,sistema:i.sistema
-      })),
+      vendedor:vendedorNombre,
+      productos:prodsCopy,
       monto:sub, montoConIVA:total,
       sistema:ST.sistemaCarrito,
       formaPago:forma,
@@ -786,10 +816,13 @@ async function guardarPedido(){
       estadoCobro:"pendiente",
       saldoPendiente:total,
       fecha:fmtF(),
+      numeroNota:nNota,
       ts:firebase.firestore.FieldValue.serverTimestamp()
     });
-    ST.pedidos.unshift({id:ref.id,clienteId:ST.clienteActivo.id,cliente:ST.clienteActivo.nombre,monto:sub,montoConIVA:total,
-      sistema:ST.sistemaCarrito,estado:"tomado",estadoCobro:"pendiente",saldoPendiente:total,fecha:fmtF()});
+    ST.pedidos.unshift({id:ref.id,clienteId:ST.clienteActivo.id,cliente:ST.clienteActivo.nombre,
+      monto:sub,montoConIVA:total,sistema:ST.sistemaCarrito,estado:"tomado",
+      estadoCobro:"pendiente",saldoPendiente:total,fecha:fmtF(),
+      numeroNota:nNota,vendedor:vendedorNombre,productos:prodsCopy});
     if(forma==="Credito"&&ST.clienteActivo.id){
       var nSaldo=(parseFloat(ST.clienteActivo.pendiente)||0)+total;
       try{
@@ -877,6 +910,15 @@ function htmlMas(){
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:14px;">
     ${masCard("📦","Pedidos","pedidos")}
     ${masCard("💳","Cartera","cartera")}
+    ${(()=>{var venc=ST.pendientes.filter(p=>!p.completado&&fechaPasada(p.fecha)).length;
+    return`<button onclick="setState({tab:'pendientes'})"
+      style="background:${CW};border:none;border-radius:14px;padding:15px;cursor:pointer;
+      text-align:left;box-shadow:0 1px 4px rgba(0,0,0,0.06);position:relative;">
+      ${venc>0?`<span style="position:absolute;top:8px;right:8px;background:${CR};color:${CW};
+        font-size:9px;font-weight:800;border-radius:10px;padding:2px 6px;">${venc}</span>`:""}
+      <div style="font-size:26px;margin-bottom:5px;">📋</div>
+      <div style="font-size:13px;font-weight:700;color:${CN};">Pendientes</div>
+    </button>`;})()}
     ${masCard("🏪","Clientes","cladmin")}
     ${masCard("🎯","Prospectos","prospectos")}
     ${masCard("↩️","Devoluciones","devoluciones")}
@@ -928,6 +970,10 @@ function htmlPedidos(){
         </div>
       </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <button onclick="abrirNotaVenta('${p.id}')"
+          style="background:#F1F5F9;border:1px solid #E2E8F0;border-radius:7px;padding:6px 11px;
+          color:#64748B;font-size:11px;font-weight:700;cursor:pointer;">
+          📄 ${p.numeroNota?fmtNota(p.numeroNota):"Nota"}</button>
         ${p.estado==="tomado"?`<button onclick="cambiarEstado('${p.id}','facturado')"
           style="background:${CB};border:none;border-radius:7px;padding:6px 12px;color:${CW};font-size:12px;font-weight:600;cursor:pointer;">✓ Facturar</button>`:""}
         ${p.estado==="facturado"?`<button onclick="cambiarEstado('${p.id}','despachado')"
@@ -992,9 +1038,17 @@ function htmlProspectos(){
       return`<div style="margin-bottom:16px;">
         <div style="font-size:11px;font-weight:700;color:#64748B;margin-bottom:6px;text-transform:uppercase;">${e} (${lista.length})</div>
         ${lista.map(p=>`<div style="background:${CW};border-radius:12px;padding:12px;margin-bottom:7px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
-          <div style="font-size:14px;font-weight:700;color:${CN};">${h(p.nombre)}</div>
-          <div style="font-size:11px;color:#64748B;">${h(p.dueno||"")} · ${h(p.zona||"")} · ${h(p.tipo||"")}</div>
-          ${p.proximoPaso?`<div style="font-size:11px;color:${CB};margin-top:4px;">→ ${h(p.proximoPaso)}</div>`:""}
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:14px;font-weight:700;color:${CN};">${h(p.nombre)}</div>
+              <div style="font-size:11px;color:#64748B;">${h(p.dueno||"")} · ${h(p.zona||"")} · ${h(p.tipo||"")}</div>
+              ${p.proximoPaso?`<div style="font-size:11px;color:${CB};margin-top:3px;">→ ${h(p.proximoPaso)}</div>`:""}
+            </div>
+            ${!p.estado?.includes("Convertido")?`<button onclick="convertirProspecto('${p.id}')"
+              style="background:#DCFCE7;border:none;border-radius:8px;padding:5px 9px;
+              color:${CG};font-size:11px;font-weight:700;cursor:pointer;flex-shrink:0;white-space:nowrap;">
+              → Cliente</button>`:`<span style="font-size:11px;color:${CG};font-weight:700;flex-shrink:0;">✅ Convertido</span>`}
+          </div>
         </div>`).join("")}
       </div>`;
     }).join("")}
@@ -1128,6 +1182,9 @@ function htmlModal(){
   if(m.tipo==="nuevoProspecto") c=mNuevoProspecto();
   if(m.tipo==="nuevoGasto")     c=mNuevoGasto();
   if(m.tipo==="nuevaDev")       c=mNuevaDev();
+  if(m.tipo==="nuevoPendiente") c=mNuevoPendiente();
+  if(m.tipo==="verNota")        c=mVerNota(m.pedido);
+  if(m.tipo==="nuevoClienteDesdeProspecto") c=mNuevoClienteDesdeProspecto(m.prospecto);
   return`<div onclick="if(event.target===this)setState({modal:null})"
     style="position:fixed;inset:0;background:rgba(0,0,0,0.48);z-index:500;
     display:flex;align-items:flex-end;justify-content:center;">
@@ -1248,13 +1305,13 @@ async function procesarCobro(id){
 
 // modal: guardar pedido ───────────────────────────────────────────
 function mGuardarPedido(){
-  var sub=ST.carrito.reduce((s,i)=>s+i.subtotal,0);
+  var total=ST.carrito.reduce((s,i)=>s+i.subtotal,0);
   return`${mHeader("Confirmar Pedido")}
   <div style="background:#F8FAFC;border-radius:11px;padding:12px;margin-bottom:14px;">
     <div style="font-size:12px;color:#64748B;">Cliente</div>
     <div style="font-size:15px;font-weight:700;color:${CN};">${h(ST.clienteActivo?.nombre||"")}</div>
-    <div style="font-size:12px;color:#64748B;margin-top:6px;">${ST.carrito.length} productos · ${h(ST.sistemaCarrito)}</div>
-    <div style="font-size:20px;font-weight:800;color:${CN};margin-top:4px;">Total: ${fmtM(sub*1.15)}</div>
+    <div style="font-size:12px;color:#64748B;margin-top:6px;">${ST.carrito.length} producto${ST.carrito.length!==1?"s":""} · ${h(ST.sistemaCarrito)}</div>
+    <div style="font-size:20px;font-weight:800;color:${CN};margin-top:4px;">Total: ${fmtM(total)}</div>
   </div>
   <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:6px;">Forma de pago</label>
   <select id="gp_forma" style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:14px;outline:none;background:${CW};margin-bottom:12px;">
@@ -1723,6 +1780,249 @@ function abrirCobroCliente(cId){
   abrirCobro(pedidos[0].id);
 }
 
+// ── NOTA DE VENTA ─────────────────────────────────────────────────
+function abrirNotaVenta(id){
+  var p=ST.pedidos.find(x=>x.id===id);
+  if(!p)return;
+  setState({modal:{tipo:"verNota",pedido:p}});
+}
+
+function mVerNota(p){
+  var num=fmtNota(p.numeroNota);
+  var prods=p.productos||[];
+  var total=parseFloat(p.montoConIVA||p.monto||0);
+  var sinIVA=total/1.15;
+  var iva=total-sinIVA;
+  return`${mHeader("Nota de Venta "+num)}
+  <div style="background:#F8FAFC;border-radius:12px;padding:16px;margin-bottom:14px;">
+    <div style="text-align:center;border-bottom:2px dashed #CBD5E1;padding-bottom:12px;margin-bottom:12px;">
+      <div style="font-size:18px;font-weight:800;color:${CN};">🥃 LA CLÍNICA</div>
+      <div style="font-size:13px;color:#64748B;font-weight:600;">NOTA DE VENTA ${num}</div>
+    </div>
+    <div style="font-size:12px;color:#64748B;margin-bottom:2px;">Fecha: ${h(p.fecha||"")}</div>
+    <div style="font-size:14px;font-weight:700;color:${CN};margin-bottom:2px;">Cliente: ${h(p.cliente||"")}</div>
+    ${p.formaPago?`<div style="font-size:11px;color:#64748B;margin-bottom:10px;">Forma de pago: ${h(p.formaPago)}</div>`:`<div style="margin-bottom:10px;"></div>`}
+    ${prods.length?prods.map(i=>`<div style="display:flex;justify-content:space-between;align-items:center;
+      font-size:12px;margin-bottom:5px;padding-bottom:5px;border-bottom:1px solid #F1F5F9;">
+      <span style="flex:1;padding-right:8px;">${i.cantidad}x ${h(i.nombre||"")}</span>
+      <span style="font-weight:700;color:${CN};white-space:nowrap;">${fmtM(i.subtotal)}</span>
+    </div>`).join(""):`<div style="color:#94A3B8;font-size:12px;padding:8px 0;text-align:center;">Sin detalle de productos</div>`}
+    <div style="border-top:2px dashed #CBD5E1;margin-top:10px;padding-top:10px;">
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:#64748B;margin-bottom:3px;">
+        <span>Subtotal sin IVA</span><span>${fmtM(sinIVA)}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:#64748B;margin-bottom:8px;">
+        <span>IVA 15% (incluido)</span><span>${fmtM(iva)}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:17px;font-weight:800;color:${CN};">
+        <span>TOTAL</span><span style="color:${CG};">${fmtM(total)}</span>
+      </div>
+    </div>
+    <div style="border-top:1px dashed #CBD5E1;margin-top:10px;padding-top:8px;
+      text-align:center;font-size:11px;color:#94A3B8;">
+      Vendedor: ${h(p.vendedor||ST.perfil?.nombre||"")}
+    </div>
+  </div>
+  <button onclick="compartirNotaWA('${p.id}')"
+    style="width:100%;background:#25D366;border:none;border-radius:13px;padding:13px;
+    color:${CW};font-size:15px;font-weight:700;cursor:pointer;margin-bottom:8px;
+    display:flex;align-items:center;justify-content:center;gap:8px;">
+    📲 Compartir por WhatsApp
+  </button>
+  <button onclick="setState({modal:null})"
+    style="width:100%;background:none;border:2px solid #E2E8F0;border-radius:13px;padding:12px;
+    color:#64748B;font-size:14px;font-weight:600;cursor:pointer;">Cerrar</button>`;
+}
+
+function compartirNotaWA(id){
+  var p=ST.pedidos.find(x=>x.id===id);
+  if(!p)return;
+  var num=fmtNota(p.numeroNota);
+  var prods=p.productos||[];
+  var total=parseFloat(p.montoConIVA||p.monto||0);
+  var lines=prods.length
+    ?prods.map(i=>`• ${i.cantidad}x ${i.nombre}    ${fmtM(i.subtotal)}`).join("\n")
+    :"(sin detalle de productos)";
+  var msg="NOTA DE VENTA "+num+"\nFecha: "+(p.fecha||"")+"\nCliente: "+(p.cliente||"")+"\n\n"+lines+"\n\nTOTAL: "+fmtM(total)+"\nVendedor: "+(p.vendedor||ST.perfil?.nombre||"");
+  window.open("https://wa.me/?text="+encodeURIComponent(msg),"_blank");
+}
+
+// ── PENDIENTES ─────────────────────────────────────────────────────
+function htmlPendientes(){
+  var tipoBg={cobro:CR,visita:CB,acuerdo:CG,jefe:CP,otro:"#64748B"};
+  var tipoLabel={cobro:"💰 Cobro",visita:"📍 Visita",acuerdo:"🤝 Acuerdo",jefe:"👔 Jefe",otro:"📝 Otro"};
+  var sorted=ST.pendientes.slice().sort((a,b)=>{
+    var av=!a.completado&&fechaPasada(a.fecha);
+    var bv=!b.completado&&fechaPasada(b.fecha);
+    if(av&&!bv)return-1;if(!av&&bv)return 1;
+    if(a.completado&&!b.completado)return 1;if(!a.completado&&b.completado)return-1;
+    return(b.fecha||"").localeCompare(a.fecha||"");
+  });
+  var pends=sorted.filter(p=>!p.completado);
+  var comps=sorted.filter(p=>p.completado);
+  var vencidos=pends.filter(p=>fechaPasada(p.fecha)).length;
+  return`<div class="fade">${subHeader("Pendientes","📋")}
+  <div style="padding:14px 14px 80px;">
+    ${vencidos>0?`<div style="background:#FEF2F2;border:2px solid ${CR};border-radius:12px;padding:11px 14px;
+      margin-bottom:12px;font-size:13px;font-weight:700;color:${CR};">
+      ⚠️ ${vencidos} pendiente${vencidos!==1?"s":""} vencido${vencidos!==1?"s":""}</div>`:""}
+    <button onclick="setState({modal:{tipo:'nuevoPendiente'}})"
+      style="width:100%;background:${CN};border:none;border-radius:13px;padding:13px;
+      color:${CW};font-size:15px;font-weight:700;cursor:pointer;margin-bottom:14px;">+ Nuevo Pendiente</button>
+    ${!pends.length?`<div style="text-align:center;padding:32px 20px;color:#94A3B8;font-size:15px;">🎉 Sin pendientes</div>`:""}
+    ${pends.map(p=>{
+      var vencido=fechaPasada(p.fecha);
+      var c=ST.clientes.find(x=>x.id===p.clienteId);
+      return`<div style="background:${vencido?"#FEF2F2":CW};border-radius:13px;padding:13px;margin-bottom:8px;
+        box-shadow:0 1px 4px rgba(0,0,0,0.06);border-left:4px solid ${vencido?CR:(tipoBg[p.tipo]||"#CBD5E1")};">
+        <div style="display:flex;align-items:flex-start;gap:10px;">
+          <button onclick="completarPendiente('${p.id}')"
+            style="width:32px;height:32px;min-width:32px;border-radius:50%;
+            border:2px solid ${vencido?CR:"#CBD5E1"};background:${CW};
+            cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;">
+            ${vencido?"⚠️":"○"}</button>
+          <div style="flex:1;min-width:0;">
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:5px;">
+              <span style="background:${tipoBg[p.tipo]||"#64748B"};color:${CW};font-size:10px;
+                font-weight:700;padding:2px 8px;border-radius:20px;">${tipoLabel[p.tipo]||p.tipo||""}</span>
+              ${vencido?`<span style="color:${CR};font-size:10px;font-weight:800;">VENCIDO</span>`:""}
+              <span style="color:#94A3B8;font-size:11px;">${h(p.fecha||"")}</span>
+            </div>
+            <div style="font-size:14px;font-weight:600;color:${vencido?CR:CN};line-height:1.3;">${h(p.descripcion||"")}</div>
+            ${c?`<button onclick="selCliente('${c.id}')"
+              style="background:none;border:none;color:${CB};font-size:12px;
+              font-weight:700;cursor:pointer;padding:3px 0;margin-top:3px;">📍 ${h(c.nombre)}</button>`:""}
+          </div>
+        </div>
+      </div>`;
+    }).join("")}
+    ${comps.length?`<details style="margin-top:12px;">
+      <summary style="font-size:12px;color:#94A3B8;font-weight:700;cursor:pointer;
+        padding:8px 0;border-top:1px solid #E2E8F0;list-style:none;">
+        ✓ Completados (${comps.length})</summary>
+      <div style="margin-top:8px;">
+        ${comps.slice(0,20).map(p=>`<div style="background:#F8FAFC;border-radius:10px;padding:10px;
+          margin-bottom:6px;display:flex;align-items:center;gap:9px;opacity:0.6;">
+          <span style="font-size:16px;flex-shrink:0;">✅</span>
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:12px;color:#64748B;text-decoration:line-through;
+              white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${h(p.descripcion||"")}</div>
+            <div style="font-size:10px;color:#94A3B8;">${h(p.fecha||"")}</div>
+          </div>
+        </div>`).join("")}
+      </div>
+    </details>`:""}
+  </div></div>`;
+}
+
+async function completarPendiente(id){
+  try{
+    await db.collection("pendientes").doc(id).update({completado:true});
+    var idx=ST.pendientes.findIndex(p=>p.id===id);
+    if(idx>=0)ST.pendientes[idx].completado=true;
+    toast("✓ Completado",CG);render();
+  }catch(e){toast("Error: "+e.message,CR);}
+}
+
+function mNuevoPendiente(){
+  var tipos=[["cobro","💰 Cobro"],["visita","📍 Visita"],["acuerdo","🤝 Acuerdo"],["jefe","👔 Jefe"],["otro","📝 Otro"]];
+  return`${mHeader("Nuevo Pendiente")}
+  <div style="margin-bottom:12px;">
+    <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:6px;">Tipo</label>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;">
+      ${tipos.map(([v,l],i)=>`<button type="button" onclick="selTipoPend(this,'${v}')" data-tipo="${v}"
+        style="padding:7px 12px;border-radius:20px;border:2px solid ${i===0?CN:"#E2E8F0"};
+        background:${i===0?CN:CW};color:${i===0?CW:"#64748B"};
+        font-size:12px;font-weight:700;cursor:pointer;">${l}</button>`).join("")}
+    </div>
+    <input type="hidden" id="pend_tipo" value="cobro"/>
+  </div>
+  <div style="margin-bottom:12px;">
+    <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Descripción *</label>
+    <textarea id="pend_desc" placeholder="Ej: El viernes Juan va a pagar..." rows="3"
+      style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:14px;
+      outline:none;resize:none;font-family:'DM Sans',sans-serif;"></textarea>
+  </div>
+  <div style="display:flex;gap:8px;margin-bottom:16px;">
+    <div style="flex:1;">
+      <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Fecha</label>
+      <input id="pend_fecha" type="date" value="${new Date().toISOString().split("T")[0]}"
+        style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:14px;outline:none;"/>
+    </div>
+    <div style="flex:1;">
+      <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Cliente</label>
+      <select id="pend_cliente" style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:13px;outline:none;background:${CW};">
+        <option value="">Sin cliente</option>
+        ${ST.clientes.sort((a,b)=>(a.nombre||"").localeCompare(b.nombre||"")).map(c=>`<option value="${c.id}">${h(c.nombre)}</option>`).join("")}
+      </select>
+    </div>
+  </div>
+  <button onclick="guardarPendiente()"
+    style="width:100%;background:${CG};border:none;border-radius:13px;padding:14px;
+    color:${CW};font-size:16px;font-weight:700;cursor:pointer;">✓ Guardar</button>`;
+}
+
+function selTipoPend(btn,tipo){
+  $("pend_tipo").value=tipo;
+  document.querySelectorAll("[data-tipo]").forEach(b=>{
+    b.style.background=CW;b.style.color="#64748B";b.style.borderColor="#E2E8F0";
+  });
+  btn.style.background=CN;btn.style.color=CW;btn.style.borderColor=CN;
+}
+
+async function guardarPendiente(){
+  var desc=val("pend_desc");
+  if(!desc){toast("La descripción es obligatoria",CR);return;}
+  var dateVal=$("pend_fecha")?.value;
+  var fecha="";
+  if(dateVal){var pts=dateVal.split("-");fecha=pts[2]+"/"+pts[1]+"/"+pts[0];}
+  var data={tipo:val("pend_tipo")||"otro",descripcion:desc,
+    clienteId:val("pend_cliente")||"",fecha,completado:false,
+    vendedor:ST.perfil?.nombre||"",ts:firebase.firestore.FieldValue.serverTimestamp()};
+  try{
+    var ref=await db.collection("pendientes").add(data);
+    ST.pendientes.unshift({id:ref.id,...data});
+    toast("✓ Pendiente guardado",CG);setState({modal:null});
+  }catch(e){toast("Error: "+e.message,CR);}
+}
+
+// ── CONVERTIR PROSPECTO ───────────────────────────────────────────
+function convertirProspecto(id){
+  var p=ST.prospectos.find(x=>x.id===id);
+  if(!p)return;
+  setState({modal:{tipo:"nuevoClienteDesdeProspecto",prospecto:p}});
+}
+
+function mNuevoClienteDesdeProspecto(pros){
+  var pre={nombre:pros.nombre||"",encargado:pros.dueno||"",tel:pros.tel||"",
+    zona:pros.zona||"Centro",precio:"C",diasVisita:[]};
+  return`${mHeader("Convertir en Cliente")}
+  <div style="background:#F0FDF4;border-radius:10px;padding:10px 12px;margin-bottom:12px;
+    font-size:12px;color:${CG};font-weight:700;">✓ Datos del prospecto precargados</div>
+  ${camposCl(pre)}
+  <button onclick="guardarClienteDesdeProspecto('${pros.id}')"
+    style="width:100%;background:${CG};border:none;border-radius:13px;padding:14px;
+    color:${CW};font-size:16px;font-weight:700;cursor:pointer;">✓ Crear Cliente</button>`;
+}
+
+async function guardarClienteDesdeProspecto(prospectoId){
+  var nombre=val("cl_nom");
+  if(!nombre){toast("El nombre es obligatorio",CR);return;}
+  var data={nombre,encargado:val("cl_enc"),tel:val("cl_tel"),ruc:val("cl_ruc"),
+    dir:val("cl_dir"),zona:val("cl_zona")||"Centro",precio:val("cl_precio")||"C",
+    ordenRuta:parseInt(val("cl_orden")||999),limiteCred:parseFloat(val("cl_lim")||0),
+    condicionesPago:val("cl_cond"),diasVisita:JSON.parse(val("cl_dias")||"[]"),
+    estado:"activo",pendiente:0,monto:0,ts:firebase.firestore.FieldValue.serverTimestamp()};
+  try{
+    var ref=await db.collection("clientes").add(data);
+    ST.clientes.push({id:ref.id,...data});
+    await db.collection("prospectos").doc(prospectoId).update({estado:"✅ Convertido"});
+    var pi=ST.prospectos.findIndex(x=>x.id===prospectoId);
+    if(pi>=0)ST.prospectos[pi].estado="✅ Convertido";
+    toast("✓ Cliente creado",CG);setState({modal:null});
+  }catch(e){toast("Error: "+e.message,CR);}
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // CARGA DE DATOS
 // ═══════════════════════════════════════════════════════════════════
@@ -1735,7 +2035,8 @@ async function cargarTodo(){
       db.collection("usuarios").get(),
       db.collection("prospectos").get(),
       db.collection("gastos").orderBy("ts","desc").limit(100).get(),
-      db.collection("devoluciones").orderBy("ts","desc").limit(100).get()
+      db.collection("devoluciones").orderBy("ts","desc").limit(100).get(),
+      db.collection("pendientes").orderBy("ts","desc").limit(200).get()
     ]);
     ST.clientes    =snaps[0].docs.map(d=>({id:d.id,...d.data()}));
     ST.pedidos     =snaps[1].docs.map(d=>({id:d.id,...d.data()}));
@@ -1744,6 +2045,7 @@ async function cargarTodo(){
     ST.prospectos  =snaps[4].docs.map(d=>({id:d.id,...d.data()}));
     ST.gastos      =snaps[5].docs.map(d=>({id:d.id,...d.data()}));
     ST.devoluciones=snaps[6].docs.map(d=>({id:d.id,...d.data()}));
+    ST.pendientes  =snaps[7].docs.map(d=>({id:d.id,...d.data()}));
   }catch(e){console.error("Error cargando datos:",e);}
 }
 
