@@ -771,23 +771,25 @@ function buildCobroCards(pend,hoy){
   if(!pend.length) return`<div style="text-align:center;padding:48px 20px;color:#94A3B8;font-size:15px;">
     🎉 No hay cobros pendientes</div>`;
   return pend.map(p=>{
-    var vencido=false;
-    if(p.vence){var pts=p.vence.split("/");
-      if(pts.length===3){var vd=new Date(parseInt(pts[2]),parseInt(pts[1])-1,parseInt(pts[0]));vencido=vd<hoy;}}
+    var dias=diasDesde(p.fecha)||0;
+    var borderColor=dias>15?CR:dias>=7?CA:CG;
     var acuerdo=p.acuerdoPago;
     var acuerdoHoy=acuerdo&&acuerdo.fecha===fmtF();
     var acuerdoVenc=acuerdo&&fechaPasada(acuerdo.fecha);
+    if(acuerdoHoy||acuerdoVenc) borderColor=CG;
+    var cli=ST.clientes.find(x=>x.id===p.clienteId);
     return`<div style="background:${CW};border-radius:14px;padding:13px;margin-bottom:9px;
-      box-shadow:0 1px 4px rgba(0,0,0,0.06);border-left:4px solid ${acuerdoHoy||acuerdoVenc?CG:vencido?CR:CA};">
+      box-shadow:0 1px 4px rgba(0,0,0,0.06);border-left:4px solid ${borderColor};">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:9px;">
         <div style="flex:1;min-width:0;">
-          <div onclick="p.clienteId&&irACliente('${p.clienteId}')"
+          <div onclick="irACliente('${p.clienteId||""}')"
             style="font-size:14px;font-weight:700;color:${CN};cursor:pointer;display:inline-block;">${h(p.cliente)}</div>
+          ${cli?.cedula?`<div style="font-size:10px;color:#94A3B8;">CI: ${h(cli.cedula)}</div>`:""}
           <div style="font-size:11px;color:#64748B;margin-top:2px;">
             ${h(p.fecha||"")}${p.factura?" · "+h(p.factura):""}${p.sistema?" · "+h(p.sistema):""}
+            ${dias>0?` · <span style="color:${dias>15?CR:dias>=7?CA:"#64748B"};font-weight:700;">${dias}d</span>`:""}
           </div>
-          ${vencido?`<div style="color:${CR};font-size:11px;font-weight:800;margin-top:3px;">⚠️ VENCIDO${p.vence?" — "+h(p.vence):""}</div>`:
-            p.vence?`<div style="color:#64748B;font-size:11px;margin-top:3px;">Vence ${h(p.vence)}</div>`:""}
+          ${p.contactoFacturacion?`<div style="font-size:10px;color:#64748B;margin-top:2px;">Contacto: ${h(p.contactoFacturacion)}</div>`:""}
           ${acuerdo?`<div style="font-size:11px;margin-top:4px;color:${acuerdoHoy?CG:acuerdoVenc?CR:CA};font-weight:700;">
             🤝 Prometió pagar: ${h(acuerdo.fecha)}${acuerdo.nota?" — "+h(acuerdo.nota):""}
             ${acuerdoHoy?"· HOY":""}${acuerdoVenc?"· VENCIDO":""}
@@ -1104,15 +1106,42 @@ async function guardarPedido(){
 // TAB 4 — COBRANZA
 // ═══════════════════════════════════════════════════════════════════
 function htmlCobranza(){
-  var todoPend=ST.pedidos.filter(p=>(p.estadoCobro!=="cobrado")&&(p.saldoPendiente||0)>0);
-  var q=ST.searchCobro||"";
-  var pend=q?todoPend.filter(p=>(p.cliente||"").toLowerCase().includes(q.toLowerCase())):todoPend;
-  pend=pend.sort((a,b)=>(a.cliente||"").localeCompare(b.cliente||""));
-  var total=todoPend.reduce((s,p)=>s+(p.saldoPendiente||0),0);
-  var hoyStr=fmtF();
-  var cobradoHoy=ST.pedidos.filter(p=>p.fechaCobro===hoyStr).reduce((s,p)=>s+(p.montoConIVA||p.monto||0)-(p.saldoPendiente||0),0);
-  var acuerdosHoy=todoPend.filter(p=>p.acuerdoPago&&(p.acuerdoPago.fecha===hoyStr||fechaPasada(p.acuerdoPago.fecha))).length;
   var hoyD=new Date();hoyD.setHours(0,0,0,0);
+  var hoyStr=fmtF();
+  var diasSem=["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"];
+  var hoyDia=diasSem[new Date().getDay()];
+  var todoPend=ST.pedidos.filter(p=>(p.estadoCobro!=="cobrado")&&(p.saldoPendiente||0)>0);
+  var filtro=ST.filtroCobro||"todos";
+  var orden=ST.ordenCobro||"monto";
+  var q=ST.searchCobro||"";
+
+  // Filtro chips
+  var pend=todoPend.slice();
+  if(filtro==="pendientes") pend=pend.filter(p=>!p.acuerdoPago);
+  else if(filtro==="vencidos") pend=pend.filter(p=>{
+    if(!p.fecha)return false;
+    var dd=diasDesde(p.fecha);return dd!==null&&dd>15;
+  });
+  else if(filtro==="hoy") pend=pend.filter(p=>{
+    var c=ST.clientes.find(x=>x.id===p.clienteId);
+    return c&&c.diaCobro===hoyDia;
+  });
+  if(q) pend=pend.filter(p=>(p.cliente||"").toLowerCase().includes(q.toLowerCase()));
+  // Orden
+  if(orden==="monto") pend=pend.sort((a,b)=>(b.saldoPendiente||0)-(a.saldoPendiente||0));
+  else if(orden==="dias") pend=pend.sort((a,b)=>(diasDesde(a.fecha)||0)<(diasDesde(b.fecha)||0)?1:-1);
+  else pend=pend.sort((a,b)=>(a.cliente||"").localeCompare(b.cliente||""));
+
+  var total=todoPend.reduce((s,p)=>s+(p.saldoPendiente||0),0);
+  var cobradoHoy=ST.pedidos.filter(p=>p.fechaCobro===hoyStr).reduce((s,p)=>s+(p.montoCobrado||0),0);
+  var acuerdosHoy=todoPend.filter(p=>p.acuerdoPago&&(p.acuerdoPago.fecha===hoyStr||fechaPasada(p.acuerdoPago.fecha))).length;
+  // Desglose Perseo vs Importados
+  var totalPerseo=todoPend.filter(p=>p.sistema!=="Importados").reduce((s,p)=>s+(p.saldoPendiente||0),0);
+  var totalImp=todoPend.filter(p=>p.sistema==="Importados").reduce((s,p)=>s+(p.saldoPendiente||0),0);
+
+  var chips=[["todos","Todos"],["pendientes","Sin acuerdo"],["vencidos","Vencidos +15d"],["hoy","Cobros hoy"]];
+  var ordOpts=[["monto","Mayor monto"],["dias","Más días"],["nombre","Por nombre"]];
+
   return`<div class="fade">
   <div style="background:${CR};padding:22px 16px 14px;">
     <div style="font-size:20px;font-weight:800;color:${CW};">💰 Cobranza</div>
@@ -1129,6 +1158,12 @@ function htmlCobranza(){
           `<div style="font-size:11px;color:rgba(255,255,255,0.65);">del día</div>`}
       </div>
     </div>
+    ${(totalPerseo>0||totalImp>0)?`<div style="display:flex;gap:6px;margin-top:8px;">
+      <div style="flex:1;background:rgba(255,255,255,0.1);border-radius:9px;padding:7px 10px;font-size:11px;color:rgba(255,255,255,0.85);">
+        🇪🇨 Perseo: <b>${fmtM(totalPerseo)}</b></div>
+      <div style="flex:1;background:rgba(255,255,255,0.1);border-radius:9px;padding:7px 10px;font-size:11px;color:rgba(255,255,255,0.85);">
+        🌎 Import.: <b>${fmtM(totalImp)}</b></div>
+    </div>`:""}
     <div style="margin-top:10px;position:relative;">
       <span style="position:absolute;left:11px;top:50%;transform:translateY(-50%);font-size:14px;">🔍</span>
       <input id="s_cobro" type="text" placeholder="Buscar cliente..."
@@ -1136,6 +1171,17 @@ function htmlCobranza(){
         style="width:100%;background:rgba(255,255,255,0.15);border:none;border-radius:10px;
         padding:9px 12px 9px 34px;color:${CW};font-size:13px;outline:none;"/>
     </div>
+  </div>
+  <div style="background:${CW};border-bottom:1px solid #E2E8F0;padding:8px 14px;overflow-x:auto;white-space:nowrap;">
+    ${chips.map(([v,l])=>`<button onclick="setState({filtroCobro:'${v}'})"
+      style="display:inline-block;margin-right:5px;padding:4px 10px;border-radius:20px;border:none;
+      background:${filtro===v?CR:CW};color:${filtro===v?CW:"#64748B"};border:1px solid ${filtro===v?CR:"#E2E8F0"};
+      font-size:11px;font-weight:700;cursor:pointer;">${l}</button>`).join("")}
+    <select onchange="setState({ordenCobro:this.value})"
+      style="display:inline-block;margin-left:6px;padding:4px 8px;border-radius:20px;border:1px solid #E2E8F0;
+      font-size:11px;font-weight:600;background:${CW};color:#64748B;outline:none;cursor:pointer;">
+      ${ordOpts.map(([v,l])=>`<option value="${v}"${orden===v?" selected":""}>${l}</option>`).join("")}
+    </select>
   </div>
   <div id="cobro_list" style="padding:14px 14px 80px;">
     ${buildCobroCards(pend,hoyD)}
@@ -1744,11 +1790,54 @@ function mTarifas(prod){
 }
 
 // modal: cobrar ───────────────────────────────────────────────────
+function setCbMode(m){
+  var hid=$("cb_mode");if(hid)hid.value=m;
+  var full=$("cb_btn_cobrar"),abon=$("cb_btn_abonar");
+  if(full&&abon){
+    if(m==="cobrar"){
+      full.style.cssText="flex:1;padding:10px;border-radius:10px;border:2px solid "+CG+";background:#F0FDF4;color:"+CG+";font-weight:700;font-size:13px;cursor:pointer;";
+      abon.style.cssText="flex:1;padding:10px;border-radius:10px;border:2px solid #E2E8F0;background:"+CW+";color:#64748B;font-weight:700;font-size:13px;cursor:pointer;";
+    } else {
+      abon.style.cssText="flex:1;padding:10px;border-radius:10px;border:2px solid "+CB+";background:#EFF6FF;color:"+CB+";font-weight:700;font-size:13px;cursor:pointer;";
+      full.style.cssText="flex:1;padding:10px;border-radius:10px;border:2px solid #E2E8F0;background:"+CW+";color:#64748B;font-weight:700;font-size:13px;cursor:pointer;";
+    }
+  }
+  // show/hide full amount hint
+  var mInp=$("cb_m");
+  var saldo=parseFloat(hid?.dataset?.saldo||0);
+  if(mInp){
+    if(m==="cobrar"){mInp.value=saldo.toFixed(2);}
+    else{mInp.value="";}
+    mInp.focus();
+  }
+}
 function mCobrar(p){
-  return`${mHeader("Registrar Cobro")}
-  <p style="font-size:13px;color:#64748B;margin-top:-10px;margin-bottom:4px;">${h(p.cliente)}</p>
-  <p style="font-size:22px;font-weight:800;color:${CR};margin-bottom:16px;">Saldo: ${fmtM(p.saldoPendiente)}</p>
-  <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:6px;">Monto cobrado</label>
+  var cli=ST.clientes.find(x=>x.id===p.clienteId);
+  return`${mHeader("💵 Registrar Cobro")}
+  <div style="background:#F8FAFC;border-radius:10px;padding:11px;margin-bottom:12px;">
+    <div style="font-size:14px;font-weight:700;color:${CN};">${h(p.cliente)}</div>
+    ${cli?.cedula?`<div style="font-size:11px;color:#64748B;">CI: ${h(cli.cedula)}</div>`:""}
+    ${p.contactoFacturacion?`<div style="font-size:11px;color:#64748B;">Contacto: ${h(p.contactoFacturacion)}</div>`:""}
+    ${p.factura?`<div style="font-size:11px;color:${CB};font-weight:700;margin-top:3px;">Factura: ${h(p.factura)}</div>`:""}
+    <div style="font-size:11px;color:#64748B;margin-top:3px;">${h(p.fecha||"")} · ${h(p.sistema||"")}</div>
+  </div>
+  <div style="text-align:center;margin-bottom:12px;">
+    <div style="font-size:12px;color:#64748B;">Saldo pendiente</div>
+    <div style="font-size:28px;font-weight:800;color:${CR};">${fmtM(p.saldoPendiente)}</div>
+  </div>
+  <div style="display:flex;gap:7px;margin-bottom:12px;">
+    <button id="cb_btn_cobrar" onclick="setCbMode('cobrar')"
+      style="flex:1;padding:10px;border-radius:10px;border:2px solid ${CG};background:#F0FDF4;color:${CG};font-weight:700;font-size:13px;cursor:pointer;">
+      ✓ COBRAR todo</button>
+    <button id="cb_btn_abonar" onclick="setCbMode('abonar')"
+      style="flex:1;padding:10px;border-radius:10px;border:2px solid #E2E8F0;background:${CW};color:#64748B;font-weight:700;font-size:13px;cursor:pointer;">
+      ± ABONAR monto</button>
+    <button onclick="setState({modal:{tipo:'acuerdo',pedido:p}})"
+      style="flex:1;padding:10px;border-radius:10px;border:1px solid ${CA};background:#FFFBEB;color:${CA};font-weight:700;font-size:12px;cursor:pointer;">
+      🤝 Acuerdo</button>
+  </div>
+  <input type="hidden" id="cb_mode" value="cobrar" data-saldo="${(p.saldoPendiente||0).toFixed(2)}"/>
+  <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:6px;">Monto a cobrar / abonar</label>
   <input id="cb_m" type="number" step="0.01" value="${(p.saldoPendiente||0).toFixed(2)}"
     style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:13px;
     font-size:22px;font-weight:800;outline:none;margin-bottom:14px;"/>
@@ -1777,7 +1866,7 @@ function mCobrar(p){
   </div>
   <button onclick="procesarCobro('${p.id}')"
     style="width:100%;background:${CG};border:none;border-radius:13px;padding:14px;
-    color:${CW};font-size:16px;font-weight:700;cursor:pointer;">✓ Procesar Cobro</button>`;
+    color:${CW};font-size:16px;font-weight:700;cursor:pointer;">✓ Procesar</button>`;
 }
 
 function setForma(f){
@@ -2035,11 +2124,18 @@ function camposCl(pre){
       }).join("")}
     </div>
   </div>
-  <div style="margin-bottom:16px;">
+  <div style="margin-bottom:12px;">
     <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Condiciones de crédito</label>
     <input id="cl_cond" type="text" placeholder="Ej: 30 días plazo, pago los viernes"
       value="${h(pre?.condicionesPago||"")}"
       style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:13px;outline:none;"/>
+  </div>
+  <div style="margin-bottom:16px;">
+    <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Día de cobro fijo</label>
+    <select id="cl_diaCobro" style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:13px;outline:none;background:${CW};">
+      <option value="">Ninguno</option>
+      ${["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"].map(d=>`<option${(pre?.diaCobro||"")=== d?" selected":""}>${d}</option>`).join("")}
+    </select>
   </div>`;
 }
 
@@ -2058,6 +2154,7 @@ async function guardarNuevoCliente(){
     dir:val("cl_dir"),zona:val("cl_zona")||"Centro",precio:val("cl_precio")||"C",
     ordenRuta:parseInt(val("cl_orden")||999),limiteCred:parseFloat(val("cl_lim")||0),
     condicionesPago:val("cl_cond"),diasVisita:JSON.parse(val("cl_dias")||"[]"),
+    diaCobro:val("cl_diaCobro")||"",
     estado:"activo",pendiente:0,monto:0,ts:firebase.firestore.FieldValue.serverTimestamp()};
   try{
     var ref=await db.collection("clientes").add(data);
@@ -2084,6 +2181,7 @@ async function actualizarCliente(id){
     dir:val("cl_dir"),zona:val("cl_zona"),precio:val("cl_precio"),
     ordenRuta:parseInt(val("cl_orden")||999),limiteCred:parseFloat(val("cl_lim")||0),
     condicionesPago:val("cl_cond"),diasVisita:JSON.parse(val("cl_dias")||"[]"),
+    diaCobro:val("cl_diaCobro")||"",
     ts:firebase.firestore.FieldValue.serverTimestamp()};
   try{
     await db.collection("clientes").doc(id).update(data);
