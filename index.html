@@ -1216,7 +1216,7 @@ function htmlMas(){
       <div style="font-size:26px;margin-bottom:5px;">🚚</div>
       <div style="font-size:13px;font-weight:700;color:${CN};">Entregas</div>
     </button>`;})()}
-    ${masCard("💳","Cartera","cartera")}
+    ${masCard("📊","Balance","cartera")}
     ${(()=>{var venc=ST.pendientes.filter(p=>!p.completado&&fechaPasada(p.fecha)).length;
     return`<button onclick="setState({tab:'pendientes'})"
       style="background:${CW};border:none;border-radius:14px;padding:15px;cursor:pointer;
@@ -2522,27 +2522,171 @@ async function guardarDev(){
   }catch(e){toast("Error: "+e.message,CR);}
 }
 
-// ── CARTERA ───────────────────────────────────────────────────────
+// ── BALANCE ───────────────────────────────────────────────────────
 function htmlCartera(){
-  var clientes=ST.clientes
+  var cfg=getConfig();
+  var hoy=new Date();
+  var hoyStr=fmtF();
+  var mesNow=hoy.getMonth()+1;
+  var anioNow=hoy.getFullYear();
+
+  // Pedidos del mes
+  var pedidosMes=ST.pedidos.filter(p=>{
+    if(p.estado==="cancelado")return false;
+    var pts=(p.fecha||"").split("/");
+    return pts.length===3&&parseInt(pts[1])===mesNow&&parseInt(pts[2])===anioNow;
+  });
+  var ventasMes=pedidosMes.reduce((s,p)=>s+(p.montoConIVA||p.monto||0),0);
+  var cobradoMes=pedidosMes.reduce((s,p)=>s+(p.montoCobrado||0),0);
+  var metaMes=parseFloat(cfg.metaMensual||0);
+  var pctMeta=metaMes>0?Math.min(100,Math.round(ventasMes/metaMes*100)):null;
+  var barColor=pctMeta!=null?(pctMeta>=100?"#4ADE80":pctMeta>=50?CA:CR):CG;
+
+  // Comisión
+  var pctComision=parseFloat(cfg.comisionPct||0);
+  var comisionMes=ventasMes*(pctComision/100);
+
+  // Cartera pendiente
+  var clientesDeuda=ST.clientes
     .filter(c=>(c.pendiente||0)>0.01)
     .sort((a,b)=>(b.pendiente||0)-(a.pendiente||0));
-  var total=clientes.reduce((s,c)=>s+(c.pendiente||0),0);
-  var hoy=new Date();
-  return`<div class="fade">${subHeader("Cartera","💳")}
+  var totalCartera=clientesDeuda.reduce((s,c)=>s+(c.pendiente||0),0);
+
+  // Top 3 clientes por monto vendido en el mes
+  var ventasPorCliente={};
+  pedidosMes.forEach(p=>{
+    if(!p.clienteId)return;
+    ventasPorCliente[p.clienteId]=(ventasPorCliente[p.clienteId]||0)+(p.montoConIVA||p.monto||0);
+  });
+  var top3Clientes=Object.entries(ventasPorCliente)
+    .sort((a,b)=>b[1]-a[1]).slice(0,3)
+    .map(([cId,monto])=>{
+      var c=ST.clientes.find(x=>x.id===cId);
+      return{nombre:c?c.nombre:cId,monto};
+    });
+
+  // Top 3 productos del mes
+  var ventasPorProd={};
+  pedidosMes.forEach(p=>{
+    (p.productos||[]).forEach(pr=>{
+      var k=pr.nombre||pr.id||"?";
+      ventasPorProd[k]=(ventasPorProd[k]||0)+(pr.subtotal||0);
+    });
+  });
+  var top3Prods=Object.entries(ventasPorProd)
+    .sort((a,b)=>b[1]-a[1]).slice(0,3)
+    .map(([nombre,monto])=>({nombre,monto}));
+
+  // Sin comprar 21+ días
+  var sinComprar21=ST.clientes.filter(c=>{
+    if(c.estado==="inactivo")return false;
+    var peds=ST.pedidos.filter(p=>p.clienteId===c.id&&p.estado!=="cancelado");
+    if(!peds.length)return true;
+    var d=diasDesde(peds[0].fecha);
+    return d!==null&&d>=21;
+  });
+
+  return`<div class="fade">${subHeader("Balance","📊")}
   <div style="padding:14px 14px 80px;">
-    <div style="background:linear-gradient(135deg,${CR},#B91C1C);border-radius:15px;padding:16px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;">
-      <div>
-        <div style="font-size:10px;color:rgba(255,255,255,0.75);text-transform:uppercase;letter-spacing:0.5px;">Total cartera</div>
-        <div style="font-size:28px;font-weight:800;color:${CW};">${fmtM(total)}</div>
+
+    <!-- Métricas del mes -->
+    <div style="background:linear-gradient(135deg,${CN},${CN2});border-radius:15px;padding:16px;margin-bottom:12px;">
+      <div style="font-size:10px;color:rgba(255,255,255,0.65);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:8px;">
+        Balance del mes</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
+        <div style="background:rgba(255,255,255,0.1);border-radius:11px;padding:11px;">
+          <div style="font-size:18px;font-weight:800;color:#4ADE80;">${fmtM(ventasMes)}</div>
+          <div style="font-size:10px;color:rgba(255,255,255,0.65);margin-top:2px;">VENTAS MES</div>
+        </div>
+        <div style="background:rgba(255,255,255,0.1);border-radius:11px;padding:11px;">
+          <div style="font-size:18px;font-weight:800;color:#FCD34D;">${fmtM(cobradoMes)}</div>
+          <div style="font-size:10px;color:rgba(255,255,255,0.65);margin-top:2px;">COBRADO MES</div>
+        </div>
+        <div style="background:rgba(255,255,255,0.1);border-radius:11px;padding:11px;">
+          <div style="font-size:18px;font-weight:800;color:#F87171;">${fmtM(totalCartera)}</div>
+          <div style="font-size:10px;color:rgba(255,255,255,0.65);margin-top:2px;">CARTERA TOTAL</div>
+        </div>
+        <div style="background:rgba(255,255,255,0.1);border-radius:11px;padding:11px;">
+          <div style="font-size:18px;font-weight:800;color:#A78BFA;">${fmtM(comisionMes)}</div>
+          <div style="font-size:10px;color:rgba(255,255,255,0.65);margin-top:2px;">COMISIÓN (${pctComision}%)</div>
+        </div>
       </div>
-      <div style="text-align:right;">
-        <div style="font-size:10px;color:rgba(255,255,255,0.75);text-transform:uppercase;">Clientes</div>
-        <div style="font-size:28px;font-weight:800;color:${CW};">${clientes.length}</div>
-      </div>
+      ${pctMeta!=null?`<div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
+          <span style="font-size:10px;color:rgba(255,255,255,0.65);text-transform:uppercase;letter-spacing:0.5px;">
+            Meta mensual</span>
+          <span style="font-size:13px;font-weight:800;color:${barColor};">${pctMeta}%${pctMeta>=100?" 🎉":""}</span>
+        </div>
+        <div style="background:rgba(255,255,255,0.15);border-radius:4px;height:7px;overflow:hidden;">
+          <div style="height:100%;width:${pctMeta}%;background:${barColor};border-radius:4px;"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-top:5px;">
+          <span style="font-size:10px;color:rgba(255,255,255,0.55);">${fmtM(ventasMes)}</span>
+          <span style="font-size:10px;color:rgba(255,255,255,0.55);">Meta: ${fmtM(metaMes)}</span>
+        </div>
+      </div>`:""}
     </div>
-    ${!clientes.length?`<div style="text-align:center;padding:48px;color:#94A3B8;font-size:15px;">🎉 Sin cuentas pendientes</div>`:""}
-    ${clientes.map(c=>{
+
+    <!-- Top 3 clientes -->
+    ${top3Clientes.length?`<div style="background:${CW};border-radius:14px;padding:14px;margin-bottom:12px;box-shadow:0 1px 4px rgba(0,0,0,0.06);">
+      <div style="font-size:12px;font-weight:800;color:${CN};text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">
+        🏆 Top clientes del mes</div>
+      ${top3Clientes.map((c,i)=>`<div style="display:flex;justify-content:space-between;align-items:center;
+        padding:7px 0;border-bottom:1px solid #F1F5F9;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div style="width:22px;height:22px;border-radius:50%;background:${i===0?CA:i===1?"#94A3B8":"#B45309"};
+            display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:${CW};">
+            ${i+1}</div>
+          <span style="font-size:13px;font-weight:600;color:${CN};">${h(c.nombre)}</span>
+        </div>
+        <span style="font-size:13px;font-weight:700;color:${CG};">${fmtM(c.monto)}</span>
+      </div>`).join("")}
+    </div>`:""}
+
+    <!-- Top 3 productos -->
+    ${top3Prods.length?`<div style="background:${CW};border-radius:14px;padding:14px;margin-bottom:12px;box-shadow:0 1px 4px rgba(0,0,0,0.06);">
+      <div style="font-size:12px;font-weight:800;color:${CN};text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">
+        🧴 Top productos del mes</div>
+      ${top3Prods.map((p,i)=>`<div style="display:flex;justify-content:space-between;align-items:center;
+        padding:7px 0;border-bottom:1px solid #F1F5F9;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div style="width:22px;height:22px;border-radius:50%;background:${i===0?CB:"#93C5FD"};
+            display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:${CW};">
+            ${i+1}</div>
+          <span style="font-size:13px;font-weight:600;color:${CN};">${h(p.nombre)}</span>
+        </div>
+        <span style="font-size:13px;font-weight:700;color:${CB};">${fmtM(p.monto)}</span>
+      </div>`).join("")}
+    </div>`:""}
+
+    <!-- Sin comprar 21+ días -->
+    ${sinComprar21.length?`<div style="background:#FFF7ED;border:1px solid #FED7AA;border-radius:14px;padding:14px;margin-bottom:12px;">
+      <div style="font-size:12px;font-weight:800;color:${CO};text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">
+        ⏰ Sin comprar hace 21+ días (${sinComprar21.length})</div>
+      ${sinComprar21.slice(0,5).map(c=>{
+        var peds=ST.pedidos.filter(p=>p.clienteId===c.id&&p.estado!=="cancelado");
+        var dias=peds.length?diasDesde(peds[0].fecha):null;
+        return`<div style="display:flex;justify-content:space-between;align-items:center;
+          padding:6px 0;border-bottom:1px solid #FED7AA;">
+          <span style="font-size:13px;font-weight:600;color:${CN};">${h(c.nombre)}</span>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-size:11px;color:${CO};font-weight:700;">${dias!=null?dias+"d":"—"}</span>
+            <button onclick="selCliente('${c.id}');setState({tab:'catalogo'})"
+              style="background:${CN};border:none;border-radius:8px;padding:5px 10px;
+              color:${CW};font-size:11px;font-weight:700;cursor:pointer;">Pedido</button>
+          </div>
+        </div>`;
+      }).join("")}
+      ${sinComprar21.length>5?`<div style="font-size:11px;color:${CO};text-align:center;margin-top:6px;">
+        +${sinComprar21.length-5} más</div>`:""}
+    </div>`:""}
+
+    <!-- Cartera por cobrar -->
+    <div style="font-size:12px;font-weight:800;color:${CN};text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">
+      💰 Cartera por cobrar (${clientesDeuda.length})</div>
+    ${!clientesDeuda.length?`<div style="text-align:center;padding:32px;color:#94A3B8;font-size:15px;">
+      🎉 Sin cuentas pendientes</div>`:""}
+    ${clientesDeuda.map(c=>{
       var pedidosPend=ST.pedidos.filter(p=>p.clienteId===c.id&&(p.saldoPendiente||0)>0.01);
       var limiteAlc=c.limiteCred&&(c.pendiente||0)>=c.limiteCred;
       return`<div style="background:${CW};border-radius:14px;padding:14px;margin-bottom:10px;
@@ -2551,14 +2695,14 @@ function htmlCartera(){
           <div style="flex:1;min-width:0;">
             <div onclick="irACliente('${c.id}')"
               style="font-size:15px;font-weight:800;color:${CN};cursor:pointer;display:inline-block;">${h(c.nombre)}</div>
-            <div style="font-size:11px;color:#64748B;margin-top:2px;">${h(c.encargado||"")}${c.zona?" · "+h(c.zona):""}  · Tarifa ${h(c.precio||"C")}</div>
+            <div style="font-size:11px;color:#64748B;margin-top:2px;">${h(c.encargado||"")}${c.zona?" · "+h(c.zona):""} · Tarifa ${h(c.precio||"C")}</div>
             ${c.condicionesPago?`<div style="font-size:11px;color:${CB};margin-top:3px;">💬 ${h(c.condicionesPago)}</div>`:""}
             ${c.limiteCred?`<div style="font-size:11px;margin-top:3px;color:${limiteAlc?CR:"#64748B"};">
               Límite: ${fmtM(c.limiteCred)} ${limiteAlc?"<b>⚠️ ALCANZADO</b>":""}</div>`:""}
           </div>
           <div style="text-align:right;flex-shrink:0;margin-left:10px;">
             <div style="font-size:22px;font-weight:800;color:${CR};">${fmtM(c.pendiente)}</div>
-            <div style="font-size:10px;color:#94A3B8;">${pedidosPend.length} factura${pedidosPend.length!==1?"s":""}</div>
+            <div style="font-size:10px;color:#94A3B8;">${pedidosPend.length} nota${pedidosPend.length!==1?"s":""}</div>
           </div>
         </div>
         ${pedidosPend.slice(0,3).map(p=>`<div style="background:#FFF7ED;border-radius:8px;padding:7px 10px;margin-bottom:5px;display:flex;justify-content:space-between;">
@@ -3168,6 +3312,22 @@ function htmlAjustes(){
     </div>
 
     <div style="background:${CW};border-radius:14px;padding:16px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+      <div style="font-size:13px;font-weight:700;color:${CN};margin-bottom:12px;">💰 Comisión</div>
+      <label style="font-size:12px;color:#64748B;display:block;margin-bottom:5px;">Porcentaje de comisión sobre ventas (%)</label>
+      <div style="display:flex;gap:8px;">
+        <input id="cfg_comision" type="number" step="0.1" min="0" max="100"
+          value="${cfg.comisionPct||""}" placeholder="0.0"
+          style="flex:1;border:2px solid #E2E8F0;border-radius:10px;padding:12px;font-size:15px;font-weight:700;outline:none;"/>
+        <button onclick="guardarComision()"
+          style="background:${CG};border:none;border-radius:10px;padding:12px 16px;
+          color:${CW};font-weight:700;cursor:pointer;font-size:14px;">✓</button>
+      </div>
+      <div style="font-size:11px;color:#94A3B8;margin-top:6px;">
+        Se muestra en el módulo Balance como estimado de comisión mensual.
+      </div>
+    </div>
+
+    <div style="background:${CW};border-radius:14px;padding:16px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
       <div style="font-size:13px;font-weight:700;color:${CN};margin-bottom:12px;">📊 Exportar Datos</div>
       <button onclick="exportarExcel()"
         style="width:100%;background:#16A34A;border:none;border-radius:11px;padding:13px;
@@ -3205,6 +3365,13 @@ function guardarMetas(){
   var mes=parseFloat(val("cfg_mmes")||0);
   saveConfig({metaSemanal:sem,metaMensual:mes});
   toast("✓ Metas guardadas",CG);render();
+}
+
+function guardarComision(){
+  var pct=parseFloat(val("cfg_comision")||0);
+  if(pct<0||pct>100){toast("Porcentaje debe estar entre 0 y 100",CR);return;}
+  saveConfig({comisionPct:pct});
+  toast("✓ Comisión guardada — "+pct+"%",CG);render();
 }
 
 function exportarJSON(){
