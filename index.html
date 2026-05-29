@@ -894,7 +894,25 @@ function htmlCarrito(){
       <div style="display:flex;align-items:flex-start;gap:9px;">
         <div style="flex:1;min-width:0;">
           <div style="font-size:14px;font-weight:700;color:${CN};line-height:1.2;">${h(item.nombre)}</div>
-          <div style="font-size:12px;color:#64748B;margin-top:2px;">${fmtM(item.precio)} c/u · ${h(item.sistema||"")}</div>
+          <div style="font-size:12px;color:#64748B;margin-top:2px;display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
+            <span id="cprice_lbl_${item.id}">${fmtM(item.precio)} c/u</span>
+            <button onclick="event.stopPropagation();iniciarEditPrecio('${item.id}')"
+              style="background:none;border:1px solid #E2E8F0;cursor:pointer;font-size:11px;padding:1px 5px;
+              color:#94A3B8;border-radius:5px;line-height:1.4;" title="Editar precio">✏️</button>
+            <span style="color:#94A3B8;">· ${h(item.sistema||"")}</span>
+          </div>
+          <div id="cprice_edit_${item.id}" style="display:none;margin-top:5px;">
+            <div style="display:flex;align-items:center;gap:5px;">
+              <span style="font-size:12px;color:#64748B;">$</span>
+              <input type="number" step="0.01" id="cprice_inp_${item.id}" value="${item.precio.toFixed(2)}"
+                style="width:85px;border:2px solid ${CB};border-radius:8px;padding:5px 8px;font-size:13px;font-weight:700;outline:none;"
+                onkeydown="if(event.key==='Enter')editarPrecioCart('${item.id}')"/>
+              <button onclick="editarPrecioCart('${item.id}')"
+                style="background:${CG};border:none;border-radius:7px;padding:5px 9px;color:${CW};font-size:12px;font-weight:700;cursor:pointer;">✓</button>
+              <button onclick="cancelarEditPrecio('${item.id}')"
+                style="background:#F1F5F9;border:none;border-radius:7px;padding:5px 9px;color:#64748B;font-size:12px;cursor:pointer;">✕</button>
+            </div>
+          </div>
         </div>
         <div style="display:flex;align-items:center;gap:7px;">
           <button onclick="quitarProd('${item.id}')"
@@ -907,7 +925,7 @@ function htmlCarrito(){
         </div>
       </div>
       <div style="text-align:right;margin-top:7px;font-size:15px;font-weight:800;color:${CN};">
-        ${fmtM(item.subtotal)}</div>
+        <span id="csubt_${item.id}">${fmtM(item.subtotal)}</span></div>
     </div>`).join("")}
   </div>
 
@@ -948,6 +966,40 @@ function htmlCarrito(){
 }
 
 function setSistema(s){ST.sistemaCarrito=s;saveCart();render();}
+
+function iniciarEditPrecio(itemId){
+  var lbl=$("cprice_lbl_"+itemId);
+  var edit=$("cprice_edit_"+itemId);
+  if(lbl) lbl.style.display="none";
+  if(edit){edit.style.display="block";var inp=$("cprice_inp_"+itemId);if(inp)inp.focus();}
+}
+function cancelarEditPrecio(itemId){
+  var lbl=$("cprice_lbl_"+itemId);
+  var edit=$("cprice_edit_"+itemId);
+  if(lbl) lbl.style.display="";
+  if(edit) edit.style.display="none";
+}
+function editarPrecioCart(itemId){
+  var inp=$("cprice_inp_"+itemId);
+  if(!inp) return;
+  var nuevoPrecio=parseFloat(inp.value||0);
+  if(!nuevoPrecio||nuevoPrecio<=0){toast("Ingresá un precio válido",CR);return;}
+  var idx=ST.carrito.findIndex(x=>x.id===itemId);
+  if(idx<0) return;
+  ST.carrito[idx].precio=nuevoPrecio;
+  ST.carrito[idx].subtotal=nuevoPrecio*ST.carrito[idx].cantidad;
+  saveCart();
+  // Update label and subtotal inline
+  var lbl=$("cprice_lbl_"+itemId);
+  var edit=$("cprice_edit_"+itemId);
+  var subt=$("csubt_"+itemId);
+  if(lbl){lbl.textContent=fmtM(nuevoPrecio)+" c/u";lbl.style.display="";}
+  if(edit) edit.style.display="none";
+  if(subt) subt.textContent=fmtM(ST.carrito[idx].subtotal);
+  // Update totals by re-rendering just the summary section
+  var total=ST.carrito.reduce((s,i)=>s+i.subtotal,0);
+  toast("✓ Precio actualizado",CG,1500);
+}
 
 function vaciarCarrito(){
   if(!confirm("¿Vaciar el carrito?")) return;
@@ -997,7 +1049,8 @@ async function guardarPedido(){
   if(ST._saving) return;
   ST._saving=true;
   var forma=val("gp_forma")||"Contado";
-  var factura=val("gp_factura")||"";
+  var contactoFacturacion=val("gp_contacto")||"";
+  var yaPago=(val("gp_ya_pago")||"no")==="si";
   var notas=val("gp_notas")||"";
   var resp=val("gp_resp")||"vendedor";
   var total=ST.carrito.reduce((s,i)=>s+i.subtotal,0);
@@ -1006,6 +1059,8 @@ async function guardarPedido(){
   var vendedorNombre=getNombre()!=="Vendedor"?getNombre():(ST.perfil?.nombre||ST.user?.email||"");
   var prodsCopy=ST.carrito.map(i=>({codigo:i.codigo,nombre:i.nombre,cantidad:i.cantidad,precioUnitario:i.precio,subtotal:i.subtotal,sistema:i.sistema}));
   var entregaObj={estado:"pendiente",responsable:resp,fechaEntrega:null,notas:""};
+  var estadoCobro=yaPago?"cobrado":"pendiente";
+  var saldoPendiente=yaPago?0:total;
   try{
     var ref=await db.collection("pedidos").add({
       cliente:ST.clienteActivo.nombre,
@@ -1015,10 +1070,11 @@ async function guardarPedido(){
       monto:sub, montoConIVA:total,
       sistema:ST.sistemaCarrito,
       formaPago:forma,
-      factura,notas,
+      contactoFacturacion,notas,
       estado:"tomado",
-      estadoCobro:"pendiente",
-      saldoPendiente:total,
+      estadoCobro,
+      saldoPendiente,
+      fechaCobro:yaPago?fmtF():"",
       fecha:fmtF(),
       numeroNota:nNota,
       entrega:entregaObj,
@@ -1026,9 +1082,9 @@ async function guardarPedido(){
     });
     ST.pedidos.unshift({id:ref.id,clienteId:ST.clienteActivo.id,cliente:ST.clienteActivo.nombre,
       monto:sub,montoConIVA:total,sistema:ST.sistemaCarrito,estado:"tomado",
-      estadoCobro:"pendiente",saldoPendiente:total,fecha:fmtF(),
+      estadoCobro,saldoPendiente,fecha:fmtF(),contactoFacturacion,
       numeroNota:nNota,vendedor:vendedorNombre,productos:prodsCopy,entrega:entregaObj});
-    if(forma==="Credito"&&ST.clienteActivo.id){
+    if(!yaPago&&forma==="Credito"&&ST.clienteActivo.id){
       var nSaldo=(parseFloat(ST.clienteActivo.pendiente)||0)+total;
       try{
         await db.collection("clientes").doc(ST.clienteActivo.id).update({pendiente:nSaldo});
@@ -1038,7 +1094,7 @@ async function guardarPedido(){
       }catch(e){}
     }
     ST.carrito=[];saveCart();
-    toast("✓ Pedido guardado",CG);
+    toast(yaPago?"✓ Pedido guardado — cobrado":"✓ Pedido guardado",CG);
     ST._saving=false;
     setState({modal:null,tab:"ruta"});
   }catch(e){toast("Error: "+e.message,CR);ST._saving=false;}
@@ -1777,6 +1833,19 @@ async function procesarCobro(id){
 }
 
 // modal: guardar pedido ───────────────────────────────────────────
+function setYaPago(v){
+  var hid=$("gp_ya_pago");if(hid)hid.value=v;
+  var si=$("gp_yp_si"),no=$("gp_yp_no");
+  if(si&&no){
+    if(v==="si"){
+      si.style.cssText="flex:1;padding:11px;border-radius:10px;border:2px solid "+CG+";background:#F0FDF4;color:"+CG+";font-weight:700;font-size:13px;cursor:pointer;";
+      no.style.cssText="flex:1;padding:11px;border-radius:10px;border:2px solid #E2E8F0;background:"+CW+";color:#64748B;font-weight:700;font-size:13px;cursor:pointer;";
+    } else {
+      no.style.cssText="flex:1;padding:11px;border-radius:10px;border:2px solid "+CR+";background:#FEF2F2;color:"+CR+";font-weight:700;font-size:13px;cursor:pointer;";
+      si.style.cssText="flex:1;padding:11px;border-radius:10px;border:2px solid #E2E8F0;background:"+CW+";color:#64748B;font-weight:700;font-size:13px;cursor:pointer;";
+    }
+  }
+}
 function mGuardarPedido(){
   var total=ST.carrito.reduce((s,i)=>s+i.subtotal,0);
   return`${mHeader("Confirmar Pedido")}
@@ -1791,9 +1860,19 @@ function mGuardarPedido(){
     <option value="Contado">Contado</option>
     <option value="Credito">Crédito</option>
   </select>
-  <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:6px;">Nro. Factura (opcional)</label>
-  <input id="gp_factura" type="text" placeholder="001-001-000001"
+  <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:6px;">Persona de contacto para facturación (opcional)</label>
+  <input id="gp_contacto" type="text" placeholder="Nombre del encargado de facturación"
     style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:14px;outline:none;margin-bottom:12px;"/>
+  <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:7px;">¿El cliente ya pagó?</label>
+  <div style="display:flex;gap:8px;margin-bottom:16px;">
+    <button id="gp_yp_si" onclick="setYaPago('si')"
+      style="flex:1;padding:11px;border-radius:10px;border:2px solid #E2E8F0;background:${CW};color:#64748B;font-weight:700;font-size:13px;cursor:pointer;">
+      ✓ Sí, ya pagó</button>
+    <button id="gp_yp_no" onclick="setYaPago('no')"
+      style="flex:1;padding:11px;border-radius:10px;border:2px solid ${CR};background:#FEF2F2;color:${CR};font-weight:700;font-size:13px;cursor:pointer;">
+      ✕ No, crédito</button>
+  </div>
+  <input type="hidden" id="gp_ya_pago" value="no"/>
   <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:6px;">Notas (opcional)</label>
   <input id="gp_notas" type="text" placeholder="Instrucciones de entrega..."
     style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:14px;outline:none;margin-bottom:14px;"/>
