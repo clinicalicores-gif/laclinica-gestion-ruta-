@@ -57,7 +57,7 @@ var ST={
   filtroCobro:"todos", ordenCobro:"monto",
   filtroProspecto:"todos",
   searchCatAdmin:"", filtroCatAdmin:"todos",
-  searchClAdmin:"",
+  searchClAdmin:"", searchPend:"",
   modal:null, toast:null, toastT:null,
   _saving:false
 };
@@ -2709,7 +2709,16 @@ function imprimirNota(id){
 }
 
 // ── PENDIENTES ─────────────────────────────────────────────────────
-function htmlPendientes(){
+var _pendTimer=null;
+function debPend(v){
+  clearTimeout(_pendTimer);
+  ST.searchPend=v;
+  _pendTimer=setTimeout(()=>{
+    var el=$("pend_lista");
+    if(el) el.innerHTML=buildPendCards(v);
+  },200);
+}
+function buildPendCards(q){
   var tipoBg={cobro:CR,visita:CB,acuerdo:CG,jefe:CP,otro:"#64748B"};
   var tipoLabel={cobro:"💰 Cobro",visita:"📍 Visita",acuerdo:"🤝 Acuerdo",jefe:"👔 Jefe",otro:"📝 Otro"};
   var sorted=ST.pendientes.slice().sort((a,b)=>{
@@ -2721,8 +2730,81 @@ function htmlPendientes(){
   });
   var pends=sorted.filter(p=>!p.completado);
   var comps=sorted.filter(p=>p.completado);
-  var vencidos=pends.filter(p=>fechaPasada(p.fecha)).length;
+  if(q){var ql=q.toLowerCase();pends=pends.filter(p=>(p.descripcion||"").toLowerCase().includes(ql)||(p.tipo||"").toLowerCase().includes(ql));}
+  var out="";
+  if(!pends.length) out+=`<div style="text-align:center;padding:32px 20px;color:#94A3B8;font-size:15px;">🎉 Sin pendientes</div>`;
+  out+=pends.map(p=>{
+    var vencido=fechaPasada(p.fecha);
+    var c=ST.clientes.find(x=>x.id===p.clienteId);
+    var deudaCliente=(p.tipo==="cobro"||p.tipo==="acuerdo")&&c?(c.pendiente||0):0;
+    return`<div style="background:${vencido?"#FEF2F2":CW};border-radius:13px;padding:13px;margin-bottom:8px;
+      box-shadow:0 1px 4px rgba(0,0,0,0.06);border-left:4px solid ${vencido?CR:(tipoBg[p.tipo]||"#CBD5E1")};">
+      <div style="display:flex;align-items:flex-start;gap:10px;">
+        <button onclick="completarPendiente('${p.id}')"
+          style="width:32px;height:32px;min-width:32px;border-radius:50%;
+          border:2px solid ${vencido?CR:"#CBD5E1"};background:${CW};
+          cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;">
+          ${vencido?"⚠️":"○"}</button>
+        <div style="flex:1;min-width:0;">
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:5px;">
+            <span style="background:${tipoBg[p.tipo]||"#64748B"};color:${CW};font-size:10px;
+              font-weight:700;padding:2px 8px;border-radius:20px;">${tipoLabel[p.tipo]||p.tipo||""}</span>
+            ${vencido?`<span style="color:${CR};font-size:10px;font-weight:800;">VENCIDO</span>`:""}
+            <span style="color:#94A3B8;font-size:11px;">${h(p.fecha||"")}</span>
+            ${p.montoPendiente?`<span style="color:${CR};font-size:11px;font-weight:700;">${fmtM(p.montoPendiente)}</span>`:""}
+          </div>
+          <div style="font-size:14px;font-weight:600;color:${vencido?CR:CN};line-height:1.3;">${h(p.descripcion||"")}</div>
+          ${c?`<div style="display:flex;align-items:center;gap:8px;margin-top:4px;flex-wrap:wrap;">
+            <button onclick="irACliente('${c.id}')"
+              style="background:none;border:none;color:${CB};font-size:12px;
+              font-weight:700;cursor:pointer;padding:0;">📍 ${h(c.nombre)}</button>
+            ${c.tel&&wa(c.tel)?`<a href="${wa(c.tel)}" target="_blank"
+              style="background:#DCFCE7;border:none;border-radius:6px;padding:2px 8px;
+              font-size:12px;text-decoration:none;color:#16A34A;font-weight:700;">💬</a>`:""}
+            ${(p.tipo==="cobro"||p.tipo==="acuerdo")?`<button onclick="setState({tab:'cobranza',searchCobro:'${h(c.nombre)}'})"
+              style="background:#FFFBEB;border:1px solid ${CA};border-radius:6px;
+              padding:2px 7px;color:${CA};font-size:10px;font-weight:700;cursor:pointer;">Ver cuenta</button>`:""}
+            ${deudaCliente>0.01?`<span style="color:${CR};font-size:11px;font-weight:700;">Debe ${fmtM(deudaCliente)}</span>`:""}
+          </div>`:""}
+        </div>
+      </div>
+    </div>`;
+  }).join("");
+  if(comps.length){out+=`<details style="margin-top:12px;">
+    <summary style="font-size:12px;color:#94A3B8;font-weight:700;cursor:pointer;
+      padding:8px 0;border-top:1px solid #E2E8F0;list-style:none;">
+      ✓ Completados (${comps.length})</summary>
+    <div style="margin-top:8px;">
+      ${comps.slice(0,20).map(p=>`<div style="background:#F8FAFC;border-radius:10px;padding:10px;
+        margin-bottom:6px;display:flex;align-items:center;gap:9px;">
+        <span style="font-size:16px;flex-shrink:0;">✅</span>
+        <div style="flex:1;min-width:0;opacity:0.65;">
+          <div style="display:flex;align-items:center;gap:5px;">
+            <div style="font-size:12px;color:#64748B;text-decoration:line-through;
+              flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${h(p.descripcion||"")}</div>
+            ${p.reactivado?`<span style="font-size:9px;background:#FFFBEB;color:${CA};border-radius:4px;padding:1px 5px;font-weight:700;white-space:nowrap;flex-shrink:0;">↩ Reactivado</span>`:""}
+          </div>
+          <div style="font-size:10px;color:#94A3B8;">${h(p.fecha||"")}${p.fechaCompletado?" · ✓ "+h(p.fechaCompletado):""}</div>
+        </div>
+        <button onclick="reactivarPendiente('${p.id}')"
+          style="background:#FFFBEB;border:1px solid ${CA};border-radius:7px;padding:4px 8px;
+          color:${CA};font-size:10px;font-weight:700;cursor:pointer;flex-shrink:0;">↩</button>
+      </div>`).join("")}
+    </div>
+  </details>`;}
+  return out;
+}
+function htmlPendientes(){
+  var vencidos=ST.pendientes.filter(p=>!p.completado&&fechaPasada(p.fecha)).length;
+  var q=ST.searchPend||"";
   return`<div class="fade">${subHeader("Pendientes","📋")}
+  <div style="background:${CW};padding:10px 14px;border-bottom:1px solid #E2E8F0;">
+    <div style="position:relative;">
+      <span style="position:absolute;left:11px;top:50%;transform:translateY(-50%);font-size:13px;">🔍</span>
+      <input id="s_pend" type="text" placeholder="Buscar pendiente..." value="${h(q)}" oninput="debPend(this.value)"
+        style="width:100%;border:2px solid #E2E8F0;border-radius:10px;padding:9px 12px 9px 33px;font-size:13px;outline:none;"/>
+    </div>
+  </div>
   <div style="padding:14px 14px 80px;">
     ${vencidos>0?`<div style="background:#FEF2F2;border:2px solid ${CR};border-radius:12px;padding:11px 14px;
       margin-bottom:12px;font-size:13px;font-weight:700;color:${CR};">
@@ -2730,60 +2812,7 @@ function htmlPendientes(){
     <button onclick="setState({modal:{tipo:'nuevoPendiente'}})"
       style="width:100%;background:${CN};border:none;border-radius:13px;padding:13px;
       color:${CW};font-size:15px;font-weight:700;cursor:pointer;margin-bottom:14px;">+ Nuevo Pendiente</button>
-    ${!pends.length?`<div style="text-align:center;padding:32px 20px;color:#94A3B8;font-size:15px;">🎉 Sin pendientes</div>`:""}
-    ${pends.map(p=>{
-      var vencido=fechaPasada(p.fecha);
-      var c=ST.clientes.find(x=>x.id===p.clienteId);
-      return`<div style="background:${vencido?"#FEF2F2":CW};border-radius:13px;padding:13px;margin-bottom:8px;
-        box-shadow:0 1px 4px rgba(0,0,0,0.06);border-left:4px solid ${vencido?CR:(tipoBg[p.tipo]||"#CBD5E1")};">
-        <div style="display:flex;align-items:flex-start;gap:10px;">
-          <button onclick="completarPendiente('${p.id}')"
-            style="width:32px;height:32px;min-width:32px;border-radius:50%;
-            border:2px solid ${vencido?CR:"#CBD5E1"};background:${CW};
-            cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;">
-            ${vencido?"⚠️":"○"}</button>
-          <div style="flex:1;min-width:0;">
-            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:5px;">
-              <span style="background:${tipoBg[p.tipo]||"#64748B"};color:${CW};font-size:10px;
-                font-weight:700;padding:2px 8px;border-radius:20px;">${tipoLabel[p.tipo]||p.tipo||""}</span>
-              ${vencido?`<span style="color:${CR};font-size:10px;font-weight:800;">VENCIDO</span>`:""}
-              <span style="color:#94A3B8;font-size:11px;">${h(p.fecha||"")}</span>
-            </div>
-            <div style="font-size:14px;font-weight:600;color:${vencido?CR:CN};line-height:1.3;">${h(p.descripcion||"")}</div>
-            ${c?`<div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
-              <button onclick="irACliente('${c.id}')"
-                style="background:none;border:none;color:${CB};font-size:12px;
-                font-weight:700;cursor:pointer;padding:0;">📍 ${h(c.nombre)}</button>
-              ${(p.tipo==="cobro"||p.tipo==="acuerdo")?`<button onclick="setState({tab:'cobranza',searchCobro:'${h(c.nombre)}'})"
-                style="background:#FFFBEB;border:1px solid ${CA};border-radius:6px;
-                padding:2px 7px;color:${CA};font-size:10px;font-weight:700;cursor:pointer;">Ver cuenta</button>`:""}
-            </div>`:""}
-          </div>
-        </div>
-      </div>`;
-    }).join("")}
-    ${comps.length?`<details style="margin-top:12px;">
-      <summary style="font-size:12px;color:#94A3B8;font-weight:700;cursor:pointer;
-        padding:8px 0;border-top:1px solid #E2E8F0;list-style:none;">
-        ✓ Completados (${comps.length})</summary>
-      <div style="margin-top:8px;">
-        ${comps.slice(0,20).map(p=>`<div style="background:#F8FAFC;border-radius:10px;padding:10px;
-          margin-bottom:6px;display:flex;align-items:center;gap:9px;">
-          <span style="font-size:16px;flex-shrink:0;">✅</span>
-          <div style="flex:1;min-width:0;opacity:0.65;">
-            <div style="display:flex;align-items:center;gap:5px;">
-              <div style="font-size:12px;color:#64748B;text-decoration:line-through;
-                flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${h(p.descripcion||"")}</div>
-              ${p.reactivado?`<span style="font-size:9px;background:#FFFBEB;color:${CA};border-radius:4px;padding:1px 5px;font-weight:700;white-space:nowrap;flex-shrink:0;">↩ Reactivado</span>`:""}
-            </div>
-            <div style="font-size:10px;color:#94A3B8;">${h(p.fecha||"")}${p.fechaCompletado?" · ✓ "+h(p.fechaCompletado):""}</div>
-          </div>
-          <button onclick="reactivarPendiente('${p.id}')"
-            style="background:#FFFBEB;border:1px solid ${CA};border-radius:7px;padding:4px 8px;
-            color:${CA};font-size:10px;font-weight:700;cursor:pointer;flex-shrink:0;">↩</button>
-        </div>`).join("")}
-      </div>
-    </details>`:""}
+    <div id="pend_lista">${buildPendCards(q)}</div>
   </div></div>`;
 }
 
@@ -2843,6 +2872,11 @@ function mNuevoPendiente(){
         box-shadow:0 4px 12px rgba(0,0,0,0.12);"></div>
     </div>
   </div>
+  <div id="pend_monto_w" style="margin-bottom:12px;display:block;">
+    <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Monto esperado (opcional)</label>
+    <input id="pend_monto" type="number" step="0.01" placeholder="$0.00"
+      style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:16px;font-weight:700;outline:none;"/>
+  </div>
   <button onclick="guardarPendiente()"
     style="width:100%;background:${CG};border:none;border-radius:13px;padding:14px;
     color:${CW};font-size:16px;font-weight:700;cursor:pointer;">✓ Guardar</button>`;
@@ -2854,6 +2888,9 @@ function selTipoPend(btn,tipo){
     b.style.background=CW;b.style.color="#64748B";b.style.borderColor="#E2E8F0";
   });
   btn.style.background=CN;btn.style.color=CW;btn.style.borderColor=CN;
+  // Show/hide monto field
+  var mw=$("pend_monto_w");
+  if(mw) mw.style.display=(tipo==="cobro"||tipo==="acuerdo")?"block":"none";
 }
 
 async function guardarPendiente(){
@@ -2862,9 +2899,12 @@ async function guardarPendiente(){
   var dateVal=$("pend_fecha")?.value;
   var fecha="";
   if(dateVal){var pts=dateVal.split("-");fecha=pts[2]+"/"+pts[1]+"/"+pts[0];}
+  var montoRaw=val("pend_monto");
+  var montoPendiente=montoRaw?parseFloat(montoRaw):null;
   var data={tipo:val("pend_tipo")||"otro",descripcion:desc,
     clienteId:val("pend_cliente")||"",fecha,completado:false,
     vendedor:ST.perfil?.nombre||"",ts:firebase.firestore.FieldValue.serverTimestamp()};
+  if(montoPendiente&&montoPendiente>0) data.montoPendiente=montoPendiente;
   try{
     var ref=await db.collection("pendientes").add(data);
     ST.pendientes.unshift({id:ref.id,...data});
