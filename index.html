@@ -353,16 +353,21 @@ function htmlRuta(){
   var diasFiltro=["Hoy","Todos","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"];
 
   var hoyStr=fmtF();
-  var pedidosHoy=ST.pedidos.filter(p=>p.fecha===hoyStr);
+  var pedidosHoy=ST.pedidos.filter(p=>p.fecha===hoyStr&&p.estado!=="cancelado");
+  var ventasHoy=pedidosHoy.reduce((s,p)=>s+(p.montoConIVA||p.monto||0),0);
   var cobradoHoy=ST.pedidos
     .filter(p=>p.fechaCobro===hoyStr)
     .reduce((s,p)=>s+(p.montoCobrado||0),0);
   var mesNow=new Date();
   var pedidosMes=ST.pedidos.filter(p=>{
+    if(p.estado==="cancelado") return false;
     var pts=(p.fecha||"").split("/");
     return pts.length===3&&parseInt(pts[1])===mesNow.getMonth()+1&&parseInt(pts[2])===mesNow.getFullYear();
   });
   var ventasMes=pedidosMes.reduce((s,p)=>s+(p.montoConIVA||p.monto||0),0);
+  // Top 3 cobros pendientes
+  var top3Cobros=ST.clientes.filter(c=>(c.pendiente||0)>0.01)
+    .sort((a,b)=>(b.pendiente||0)-(a.pendiente||0)).slice(0,3);
 
   return`<div class="fade">
   <div style="background:linear-gradient(160deg,${CN} 60%,${CN2});padding:20px 16px 14px;">
@@ -385,12 +390,12 @@ function htmlRuta(){
         <div style="font-size:10px;color:rgba(255,255,255,0.65);margin-top:2px;">PEDIDOS HOY</div>
       </div>
       <div style="background:rgba(255,255,255,0.12);border-radius:13px;padding:12px;">
-        <div style="font-size:18px;font-weight:800;color:#4ADE80;">${fmtM(cobradoHoy)}</div>
-        <div style="font-size:10px;color:rgba(255,255,255,0.65);margin-top:2px;">COBRADO HOY</div>
+        <div style="font-size:18px;font-weight:800;color:#4ADE80;">${fmtM(ventasHoy)}</div>
+        <div style="font-size:10px;color:rgba(255,255,255,0.65);margin-top:2px;">VENTAS HOY</div>
       </div>
       <div style="background:rgba(255,255,255,0.12);border-radius:13px;padding:12px;">
-        <div style="font-size:24px;font-weight:800;color:${CW};">${pedidosMes.length}</div>
-        <div style="font-size:10px;color:rgba(255,255,255,0.65);margin-top:2px;">PEDIDOS MES</div>
+        <div style="font-size:18px;font-weight:800;color:#60A5FA;">${fmtM(cobradoHoy)}</div>
+        <div style="font-size:10px;color:rgba(255,255,255,0.65);margin-top:2px;">COBRADO HOY</div>
       </div>
       <div style="background:rgba(255,255,255,0.12);border-radius:13px;padding:12px;">
         <div style="font-size:17px;font-weight:800;color:#FCD34D;">${fmtM(ventasMes)}</div>
@@ -439,6 +444,12 @@ function htmlRuta(){
         color:${CW};font-size:14px;font-weight:800;cursor:pointer;
         display:flex;align-items:center;justify-content:center;gap:6px;">
         🛒 Pedido
+      </button>
+      <button onclick="setState({tab:'cobranza'})"
+        style="flex:1;background:#16A34A;border:none;border-radius:13px;padding:12px;
+        color:${CW};font-size:12px;font-weight:800;cursor:pointer;
+        display:flex;align-items:center;justify-content:center;gap:4px;">
+        💵
       </button>
       <button onclick="setState({modal:{tipo:'nuevoPendiente'}})"
         style="flex:1;background:rgba(255,255,255,0.13);border:1px solid rgba(255,255,255,0.25);
@@ -494,6 +505,24 @@ function htmlRuta(){
       background:${zona===z?"#1A3A5C":CW};color:${zona===z?CW:"#94A3B8"};
       font-size:11px;font-weight:500;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,0.06);">${z}</button>`).join("")}
   </div>
+
+  ${top3Cobros.length>0?`<div style="padding:8px 14px 4px;">
+    <div style="font-size:10px;font-weight:800;color:#64748B;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">
+      💰 Top cobros pendientes</div>
+    ${top3Cobros.map(c=>`<div style="background:${CW};border-radius:11px;padding:10px 12px;margin-bottom:5px;
+      box-shadow:0 1px 3px rgba(0,0,0,0.06);display:flex;justify-content:space-between;align-items:center;">
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:13px;font-weight:700;color:${CN};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${h(c.nombre)}</div>
+        ${c.tel&&wa(c.tel)?`<a href="${wa(c.tel)}" target="_blank" style="font-size:11px;color:#16A34A;text-decoration:none;">💬 WhatsApp</a>`:""}
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;margin-left:8px;">
+        <span style="font-size:15px;font-weight:800;color:${CR};">${fmtM(c.pendiente)}</span>
+        <button onclick="abrirCobroCliente('${c.id}')"
+          style="background:${CG};border:none;border-radius:8px;padding:6px 11px;
+          color:${CW};font-size:12px;font-weight:700;cursor:pointer;">Cobrar</button>
+      </div>
+    </div>`).join("")}
+  </div>`:""}
 
   <div style="padding:0 14px 10px;display:flex;gap:8px;">
     <div style="flex:1;background:${CW};border-radius:12px;padding:10px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
