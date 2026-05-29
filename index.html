@@ -104,6 +104,21 @@ function fechaPasada(fechaStr){
   var hoy=new Date();hoy.setHours(0,0,0,0);
   return d<hoy;
 }
+function getConfig(){try{return JSON.parse(localStorage.getItem("vr_config")||"{}");}catch(e){return {};}}
+function saveConfig(obj){localStorage.setItem("vr_config",JSON.stringify(Object.assign(getConfig(),obj)));}
+function getNombre(){var c=getConfig();return c.nombreVendedor||ST.perfil?.nombre||"Vendedor";}
+function ventasSemana(){
+  var hoy=new Date();
+  var dow=hoy.getDay();
+  var daysFromMon=dow===0?6:dow-1;
+  var lunes=new Date(hoy);lunes.setDate(hoy.getDate()-daysFromMon);lunes.setHours(0,0,0,0);
+  return ST.pedidos.filter(p=>p.estado!=="cancelado").filter(p=>{
+    var pts=(p.fecha||"").split("/");
+    if(pts.length!==3)return false;
+    var d=new Date(parseInt(pts[2]),parseInt(pts[1])-1,parseInt(pts[0]));
+    return d>=lunes&&d<=hoy;
+  }).reduce((s,p)=>s+(p.montoConIVA||p.monto||0),0);
+}
 function fmtF(d){
   var x=d||new Date();
   return String(x.getDate()).padStart(2,"0")+"/"+String(x.getMonth()+1).padStart(2,"0")+"/"+x.getFullYear();
@@ -234,6 +249,7 @@ function htmlApp(){
     ${tab==="catalogo_admin"? htmlCatalogoAdmin():""}
     ${tab==="cartera"      ? htmlCartera()     :""}
     ${tab==="pendientes"   ? htmlPendientes()  :""}
+    ${tab==="ajustes"      ? htmlAjustes()     :""}
     ${tab==="usuarios"  ? htmlUsuarios()  : ""}
   </div>
 
@@ -333,7 +349,7 @@ function htmlRuta(){
         <div style="font-size:10px;color:rgba(255,255,255,0.55);text-transform:uppercase;letter-spacing:0.8px;">
           ${hoyDia} ${hoyStr}</div>
         <div style="font-size:21px;font-weight:800;color:${CW};">
-          Hola, ${h(ST.perfil?.nombre?.split(" ")[0]||"Vendedor")} 👋</div>
+          Hola, ${h(getNombre().split(" ")[0])} 👋</div>
       </div>
       <button onclick="setState({modal:{tipo:'nuevoCliente'}})"
         style="background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.25);
@@ -360,18 +376,50 @@ function htmlRuta(){
       </div>
     </div>
 
-    <div style="display:flex;gap:8px;margin-bottom:12px;">
+    ${(()=>{
+      var cfg=getConfig();
+      var metaSem=parseFloat(cfg.metaSemanal||0);
+      var metaMes=parseFloat(cfg.metaMensual||0);
+      var useSem=metaSem>0;
+      var meta=useSem?metaSem:metaMes;
+      if(!meta) return"";
+      var progreso=useSem?ventasSemana():ventasMes;
+      var pct=Math.min(100,Math.round(progreso/meta*100));
+      var barColor=pct>=100?"#4ADE80":pct>=50?"#FCD34D":"#F87171";
+      return`<div style="background:rgba(255,255,255,0.1);border-radius:13px;padding:11px 13px;margin-bottom:10px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+          <span style="font-size:10px;color:rgba(255,255,255,0.65);text-transform:uppercase;letter-spacing:0.5px;">
+            META ${useSem?"SEMANAL":"MENSUAL"}</span>
+          <span style="font-size:13px;font-weight:800;color:${barColor};">${pct}% ${pct>=100?"🎉":""}</span>
+        </div>
+        <div style="background:rgba(255,255,255,0.15);border-radius:4px;height:7px;overflow:hidden;">
+          <div style="height:100%;width:${pct}%;background:${barColor};border-radius:4px;"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-top:5px;">
+          <span style="font-size:10px;color:rgba(255,255,255,0.55);">${fmtM(progreso)}</span>
+          <span style="font-size:10px;color:rgba(255,255,255,0.55);">Meta: ${fmtM(meta)}</span>
+        </div>
+      </div>`;
+    })()}
+
+    <div style="display:flex;gap:7px;margin-bottom:10px;">
       <button onclick="setState({tab:'catalogo'})"
-        style="flex:2;background:${CB};border:none;border-radius:13px;padding:13px;
-        color:${CW};font-size:15px;font-weight:800;cursor:pointer;
-        display:flex;align-items:center;justify-content:center;gap:8px;">
-        🛒 Nuevo Pedido
+        style="flex:2;background:${CB};border:none;border-radius:13px;padding:12px;
+        color:${CW};font-size:14px;font-weight:800;cursor:pointer;
+        display:flex;align-items:center;justify-content:center;gap:6px;">
+        🛒 Pedido
       </button>
       <button onclick="setState({modal:{tipo:'nuevoPendiente'}})"
-        style="flex:1;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);
-        border-radius:13px;padding:13px;color:${CW};font-size:13px;font-weight:700;cursor:pointer;
-        display:flex;align-items:center;justify-content:center;gap:5px;">
-        📋 Pendiente
+        style="flex:1;background:rgba(255,255,255,0.13);border:1px solid rgba(255,255,255,0.25);
+        border-radius:13px;padding:12px;color:${CW};font-size:12px;font-weight:700;cursor:pointer;
+        display:flex;align-items:center;justify-content:center;gap:4px;">
+        📋
+      </button>
+      <button onclick="abrirCierreDia()"
+        style="flex:1;background:rgba(255,255,255,0.13);border:1px solid rgba(255,255,255,0.25);
+        border-radius:13px;padding:12px;color:${CW};font-size:12px;font-weight:700;cursor:pointer;
+        display:flex;align-items:center;justify-content:center;gap:4px;">
+        📊
       </button>
     </div>
     ${(()=>{var venc=ST.pendientes.filter(p=>!p.completado&&fechaPasada(p.fecha)).length;
@@ -800,7 +848,7 @@ async function guardarPedido(){
   var total=ST.carrito.reduce((s,i)=>s+i.subtotal,0);
   var sub=total/1.15;
   var nNota=getNextNota();
-  var vendedorNombre=ST.perfil?.nombre||ST.user?.email||"";
+  var vendedorNombre=getNombre()!=="Vendedor"?getNombre():(ST.perfil?.nombre||ST.user?.email||"");
   var prodsCopy=ST.carrito.map(i=>({codigo:i.codigo,nombre:i.nombre,cantidad:i.cantidad,precioUnitario:i.precio,subtotal:i.subtotal,sistema:i.sistema}));
   try{
     var ref=await db.collection("pedidos").add({
@@ -904,8 +952,9 @@ function abrirCobro(id){
 // ═══════════════════════════════════════════════════════════════════
 function htmlMas(){
   var rol=ST.perfil?.rol||"vendedor";
+  var nombre=getNombre();
   return`<div class="fade" style="padding:18px 14px;">
-  <div style="font-size:20px;font-weight:800;color:${CN};">${h(ST.perfil?.nombre||"")}</div>
+  <div style="font-size:20px;font-weight:800;color:${CN};">${h(nombre)}</div>
   <div style="font-size:12px;color:#64748B;margin-bottom:18px;">${h(rol)} · ${h(ST.user?.email||"")}</div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:14px;">
     ${masCard("📦","Pedidos","pedidos")}
@@ -924,8 +973,14 @@ function htmlMas(){
     ${masCard("↩️","Devoluciones","devoluciones")}
     ${masCard("💸","Gastos Ruta","gastos")}
     ${masCard("🧴","Catálogo Admin","catalogo_admin")}
+    ${masCard("⚙️","Ajustes","ajustes")}
     ${(rol==="dueno"||rol==="admin")?masCard("👥","Usuarios","usuarios"):""}
   </div>
+  <button onclick="abrirCierreDia()"
+    style="width:100%;background:${CN};border:none;border-radius:13px;
+    padding:13px;color:${CW};font-size:14px;font-weight:700;cursor:pointer;margin-bottom:10px;">
+    📊 Cerrar Día y Reporte
+  </button>
   <button onclick="auth.signOut()"
     style="width:100%;background:none;border:2px solid #E2E8F0;border-radius:13px;
     padding:13px;color:#64748B;font-size:14px;font-weight:600;cursor:pointer;">
@@ -1185,6 +1240,7 @@ function htmlModal(){
   if(m.tipo==="nuevoPendiente") c=mNuevoPendiente();
   if(m.tipo==="verNota")        c=mVerNota(m.pedido);
   if(m.tipo==="nuevoClienteDesdeProspecto") c=mNuevoClienteDesdeProspecto(m.prospecto);
+  if(m.tipo==="cierreDia")      c=mCierreDia();
   return`<div onclick="if(event.target===this)setState({modal:null})"
     style="position:fixed;inset:0;background:rgba(0,0,0,0.48);z-index:500;
     display:flex;align-items:flex-end;justify-content:center;">
@@ -1984,6 +2040,172 @@ async function guardarPendiente(){
     ST.pendientes.unshift({id:ref.id,...data});
     toast("✓ Pendiente guardado",CG);setState({modal:null});
   }catch(e){toast("Error: "+e.message,CR);}
+}
+
+// ── AJUSTES ────────────────────────────────────────────────────────
+function htmlAjustes(){
+  var cfg=getConfig();
+  return`<div class="fade">${subHeader("Ajustes","⚙️")}
+  <div style="padding:14px 14px 80px;">
+
+    <div style="background:${CW};border-radius:14px;padding:16px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+      <div style="font-size:13px;font-weight:700;color:${CN};margin-bottom:12px;">👤 Perfil del Vendedor</div>
+      <label style="font-size:12px;color:#64748B;display:block;margin-bottom:5px;">Nombre (aparece en notas y reportes)</label>
+      <div style="display:flex;gap:8px;">
+        <input id="cfg_nombre" type="text" value="${h(cfg.nombreVendedor||ST.perfil?.nombre||"")}"
+          placeholder="Tu nombre completo"
+          style="flex:1;border:2px solid #E2E8F0;border-radius:10px;padding:12px;font-size:14px;outline:none;"/>
+        <button onclick="guardarNombre()"
+          style="background:${CN};border:none;border-radius:10px;padding:12px 16px;
+          color:${CW};font-weight:700;cursor:pointer;font-size:14px;">✓</button>
+      </div>
+    </div>
+
+    <div style="background:${CW};border-radius:14px;padding:16px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+      <div style="font-size:13px;font-weight:700;color:${CN};margin-bottom:12px;">🎯 Metas de Venta</div>
+      <div style="display:flex;gap:8px;margin-bottom:12px;">
+        <div style="flex:1;">
+          <label style="font-size:12px;color:#64748B;display:block;margin-bottom:5px;">Meta semanal</label>
+          <input id="cfg_msem" type="number" step="1" value="${cfg.metaSemanal||""}" placeholder="$0"
+            style="width:100%;border:2px solid #E2E8F0;border-radius:10px;padding:12px;font-size:15px;font-weight:700;outline:none;"/>
+        </div>
+        <div style="flex:1;">
+          <label style="font-size:12px;color:#64748B;display:block;margin-bottom:5px;">Meta mensual</label>
+          <input id="cfg_mmes" type="number" step="1" value="${cfg.metaMensual||""}" placeholder="$0"
+            style="width:100%;border:2px solid #E2E8F0;border-radius:10px;padding:12px;font-size:15px;font-weight:700;outline:none;"/>
+        </div>
+      </div>
+      <div style="font-size:11px;color:#94A3B8;margin-bottom:10px;">
+        Si defines ambas, se muestra la semanal en el dashboard.
+      </div>
+      <button onclick="guardarMetas()"
+        style="width:100%;background:${CN};border:none;border-radius:10px;padding:12px;
+        color:${CW};font-weight:700;cursor:pointer;font-size:14px;">✓ Guardar metas</button>
+    </div>
+
+    <div style="background:${CW};border-radius:14px;padding:16px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+      <div style="font-size:13px;font-weight:700;color:${CN};margin-bottom:12px;">💾 Respaldo de Datos</div>
+      <button onclick="exportarJSON()"
+        style="width:100%;background:${CB};border:none;border-radius:11px;padding:13px;
+        color:${CW};font-weight:700;cursor:pointer;font-size:14px;margin-bottom:8px;">
+        ⬇️ Exportar datos (JSON)</button>
+      <div style="font-size:11px;color:#94A3B8;text-align:center;">
+        Guarda un respaldo de todos los datos de la app.</div>
+    </div>
+
+    <div style="background:#FEF2F2;border:2px solid #FECACA;border-radius:14px;padding:16px;">
+      <div style="font-size:13px;font-weight:700;color:${CR};margin-bottom:4px;">⚠️ Zona de Peligro</div>
+      <div style="font-size:12px;color:#64748B;margin-bottom:12px;">Limpia los datos guardados localmente (configuración y notas correlativas). Los datos en la nube no se borran.</div>
+      <button onclick="limpiarDatosLocales()"
+        style="width:100%;background:none;border:2px solid ${CR};border-radius:10px;padding:12px;
+        color:${CR};font-weight:700;cursor:pointer;font-size:14px;">🗑️ Limpiar datos locales</button>
+    </div>
+
+  </div></div>`;
+}
+
+function guardarNombre(){
+  var n=val("cfg_nombre");
+  if(!n){toast("Ingresá un nombre",CR);return;}
+  saveConfig({nombreVendedor:n});
+  toast("✓ Nombre guardado — "+n,CG);render();
+}
+
+function guardarMetas(){
+  var sem=parseFloat(val("cfg_msem")||0);
+  var mes=parseFloat(val("cfg_mmes")||0);
+  saveConfig({metaSemanal:sem,metaMensual:mes});
+  toast("✓ Metas guardadas",CG);render();
+}
+
+function exportarJSON(){
+  try{
+    var data={
+      fecha:new Date().toISOString(),
+      vendedor:getNombre(),
+      clientes:ST.clientes,
+      pedidos:ST.pedidos.slice(0,200),
+      catalogo:ST.catalogo,
+      prospectos:ST.prospectos,
+      gastos:ST.gastos,
+      devoluciones:ST.devoluciones,
+      pendientes:ST.pendientes,
+      config:getConfig()
+    };
+    var blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
+    var a=document.createElement("a");
+    a.href=URL.createObjectURL(blob);
+    a.download="laclinica-backup-"+fmtF().replace(/\//g,"-")+".json";
+    document.body.appendChild(a);a.click();document.body.removeChild(a);
+    toast("✓ Exportado correctamente",CG);
+  }catch(e){toast("Error al exportar: "+e.message,CR);}
+}
+
+function limpiarDatosLocales(){
+  if(!confirm("¿Limpiar configuración local (nombre, metas, nota correlativa)?")) return;
+  if(!confirm("⚠️ Confirmación final — se perderán ajustes locales.")) return;
+  ["vr_config","vr_ultimo_numero_nota","lc_carrito","lc_cliente","lc_sistema"]
+    .forEach(k=>localStorage.removeItem(k));
+  toast("✓ Datos locales limpiados",CA);render();
+}
+
+// ── CIERRE DEL DÍA ─────────────────────────────────────────────────
+function abrirCierreDia(){setState({modal:{tipo:"cierreDia"}});}
+
+function mCierreDia(){
+  var hoyStr=fmtF();
+  var pedidosHoy=ST.pedidos.filter(p=>p.fecha===hoyStr&&p.estado!=="cancelado");
+  var ventasHoy=pedidosHoy.reduce((s,p)=>s+(p.montoConIVA||p.monto||0),0);
+  var cobradoHoy=ST.pedidos.filter(p=>p.fechaCobro===hoyStr).reduce((s,p)=>s+(p.montoCobrado||0),0);
+  var gastosHoy=ST.gastos.filter(g=>g.fecha===hoyStr).reduce((s,g)=>s+(g.monto||0),0);
+  var utilidad=ventasHoy+cobradoHoy-gastosHoy;
+  var clientesUnicos=new Set(pedidosHoy.map(p=>p.clienteId).filter(Boolean)).size;
+  var filas=[
+    ["🏪 Clientes visitados",String(clientesUnicos)],
+    ["📋 Notas de venta",String(pedidosHoy.length)],
+    ["💰 Total vendido",fmtM(ventasHoy)],
+    ["💵 Total cobrado",fmtM(cobradoHoy)],
+    ["💸 Gastos del día",fmtM(gastosHoy)],
+    ["✨ Utilidad estimada",fmtM(utilidad)]
+  ];
+  var nombre=getNombre();
+  return`${mHeader("Cierre del Día — "+hoyStr)}
+  <div style="background:#F8FAFC;border-radius:13px;padding:4px 14px;margin-bottom:14px;">
+    ${filas.map(([label,valor],i)=>`<div style="display:flex;justify-content:space-between;
+      align-items:center;padding:11px 0;
+      ${i<filas.length-1?"border-bottom:1px solid #F1F5F9;":""}">
+      <span style="font-size:13px;color:#64748B;">${label}</span>
+      <span style="font-size:15px;font-weight:800;color:${label.includes("Utilidad")?CG:CN};">${valor}</span>
+    </div>`).join("")}
+  </div>
+  <button onclick="compartirCierreDiaWA()"
+    style="width:100%;background:#25D366;border:none;border-radius:13px;padding:14px;
+    color:${CW};font-size:15px;font-weight:700;cursor:pointer;margin-bottom:8px;
+    display:flex;align-items:center;justify-content:center;gap:8px;">
+    📲 Compartir con Jefe por WhatsApp
+  </button>
+  <button onclick="setState({modal:null})"
+    style="width:100%;background:none;border:2px solid #E2E8F0;border-radius:13px;padding:12px;
+    color:#64748B;font-size:14px;font-weight:600;cursor:pointer;">Cerrar</button>`;
+}
+
+function compartirCierreDiaWA(){
+  var hoyStr=fmtF();
+  var pedidosHoy=ST.pedidos.filter(p=>p.fecha===hoyStr&&p.estado!=="cancelado");
+  var ventasHoy=pedidosHoy.reduce((s,p)=>s+(p.montoConIVA||p.monto||0),0);
+  var cobradoHoy=ST.pedidos.filter(p=>p.fechaCobro===hoyStr).reduce((s,p)=>s+(p.montoCobrado||0),0);
+  var gastosHoy=ST.gastos.filter(g=>g.fecha===hoyStr).reduce((s,g)=>s+(g.monto||0),0);
+  var utilidad=ventasHoy+cobradoHoy-gastosHoy;
+  var clientesUnicos=new Set(pedidosHoy.map(p=>p.clienteId).filter(Boolean)).size;
+  var nombre=getNombre();
+  var msg="REPORTE DEL DÍA — "+hoyStr+"\nVendedor: "+nombre+
+    "\n\nClientes visitados: "+clientesUnicos+
+    "\nNotas de venta: "+pedidosHoy.length+
+    "\nTotal vendido: "+fmtM(ventasHoy)+
+    "\nTotal cobrado: "+fmtM(cobradoHoy)+
+    "\nGastos: "+fmtM(gastosHoy)+
+    "\nUtilidad estimada: "+fmtM(utilidad);
+  window.open("https://wa.me/?text="+encodeURIComponent(msg),"_blank");
 }
 
 // ── CONVERTIR PROSPECTO ───────────────────────────────────────────
