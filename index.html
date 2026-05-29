@@ -260,6 +260,7 @@ function htmlApp(){
     ${tab==="pendientes"   ? htmlPendientes()  :""}
     ${tab==="ajustes"      ? htmlAjustes()     :""}
     ${tab==="usuarios"  ? htmlUsuarios()  : ""}
+    ${tab==="entregas"  ? htmlEntregas()  : ""}
   </div>
 
   <div style="position:fixed;bottom:0;left:0;right:0;max-width:440px;margin:0 auto;
@@ -409,6 +410,15 @@ function htmlRuta(){
           <span style="font-size:10px;color:rgba(255,255,255,0.55);">Meta: ${fmtM(meta)}</span>
         </div>
       </div>`;
+    })()}
+    ${(()=>{
+      var entPend=ST.pedidos.filter(p=>p.entrega&&p.entrega.estado!=="entregado").length;
+      return entPend>0?`<button onclick="setState({tab:'entregas'})"
+        style="width:100%;background:${CO};border:none;border-radius:11px;padding:9px 13px;
+        color:${CW};font-size:12px;font-weight:700;cursor:pointer;margin-bottom:10px;
+        display:flex;align-items:center;justify-content:space-between;">
+        <span>📦 ${entPend} entrega${entPend!==1?"s":""} pendiente${entPend!==1?"s":""}</span><span>Ver →</span>
+      </button>`:"";
     })()}
 
     <div style="display:flex;gap:7px;margin-bottom:10px;">
@@ -854,17 +864,33 @@ function abrirGuardarPedido(){
   setState({modal:{tipo:"guardarPedido"}});
 }
 
+function setEntregaResp(r){
+  var inp=$("gp_resp");if(inp)inp.value=r;
+  var bv=$("er_v"),bb=$("er_b");
+  if(bv&&bb){
+    if(r==="vendedor"){
+      bv.style.border="2px solid "+CB;bv.style.background="#EFF6FF";bv.style.color=CB;
+      bb.style.border="2px solid #E2E8F0";bb.style.background=CW;bb.style.color="#64748B";
+    } else {
+      bb.style.border="2px solid "+CO;bb.style.background="#FFF7ED";bb.style.color=CO;
+      bv.style.border="2px solid #E2E8F0";bv.style.background=CW;bv.style.color="#64748B";
+    }
+  }
+}
+
 async function guardarPedido(){
   if(ST._saving) return;
   ST._saving=true;
   var forma=val("gp_forma")||"Contado";
   var factura=val("gp_factura")||"";
   var notas=val("gp_notas")||"";
+  var resp=val("gp_resp")||"vendedor";
   var total=ST.carrito.reduce((s,i)=>s+i.subtotal,0);
   var sub=total/1.15;
   var nNota=getNextNota();
   var vendedorNombre=getNombre()!=="Vendedor"?getNombre():(ST.perfil?.nombre||ST.user?.email||"");
   var prodsCopy=ST.carrito.map(i=>({codigo:i.codigo,nombre:i.nombre,cantidad:i.cantidad,precioUnitario:i.precio,subtotal:i.subtotal,sistema:i.sistema}));
+  var entregaObj={estado:"pendiente",responsable:resp,fechaEntrega:null,notas:""};
   try{
     var ref=await db.collection("pedidos").add({
       cliente:ST.clienteActivo.nombre,
@@ -880,12 +906,13 @@ async function guardarPedido(){
       saldoPendiente:total,
       fecha:fmtF(),
       numeroNota:nNota,
+      entrega:entregaObj,
       ts:firebase.firestore.FieldValue.serverTimestamp()
     });
     ST.pedidos.unshift({id:ref.id,clienteId:ST.clienteActivo.id,cliente:ST.clienteActivo.nombre,
       monto:sub,montoConIVA:total,sistema:ST.sistemaCarrito,estado:"tomado",
       estadoCobro:"pendiente",saldoPendiente:total,fecha:fmtF(),
-      numeroNota:nNota,vendedor:vendedorNombre,productos:prodsCopy});
+      numeroNota:nNota,vendedor:vendedorNombre,productos:prodsCopy,entrega:entregaObj});
     if(forma==="Credito"&&ST.clienteActivo.id){
       var nSaldo=(parseFloat(ST.clienteActivo.pendiente)||0)+total;
       try{
@@ -973,6 +1000,15 @@ function htmlMas(){
   <div style="font-size:12px;color:#64748B;margin-bottom:18px;">${h(rol)} · ${h(ST.user?.email||"")}</div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:14px;">
     ${masCard("📦","Pedidos","pedidos")}
+    ${(()=>{var ep=ST.pedidos.filter(p=>p.entrega&&p.entrega.estado!=="entregado").length;
+    return`<button onclick="setState({tab:'entregas'})"
+      style="background:${CW};border:none;border-radius:14px;padding:15px;cursor:pointer;
+      text-align:left;box-shadow:0 1px 4px rgba(0,0,0,0.06);position:relative;">
+      ${ep>0?`<span style="position:absolute;top:8px;right:8px;background:${CO};color:${CW};
+        font-size:9px;font-weight:800;border-radius:10px;padding:2px 6px;">${ep}</span>`:""}
+      <div style="font-size:26px;margin-bottom:5px;">🚚</div>
+      <div style="font-size:13px;font-weight:700;color:${CN};">Entregas</div>
+    </button>`;})()}
     ${masCard("💳","Cartera","cartera")}
     ${(()=>{var venc=ST.pendientes.filter(p=>!p.completado&&fechaPasada(p.fecha)).length;
     return`<button onclick="setState({tab:'pendientes'})"
@@ -1062,6 +1098,101 @@ async function cambiarEstado(id,estado){
     if(idx>=0) ST.pedidos[idx].estado=estado;
     toast("Estado: "+estado,CG);render();
   }catch(e){toast("Error: "+e.message,CR);}
+}
+
+// ── CONTROL DE ENTREGAS ───────────────────────────────────────────
+function htmlEntregas(){
+  var pend=ST.pedidos.filter(p=>p.entrega&&p.entrega.estado!=="entregado");
+  var yo=pend.filter(p=>p.entrega.responsable!=="bodega");
+  var bod=pend.filter(p=>p.entrega.responsable==="bodega");
+  return`<div class="fade">
+  <div style="background:${CO};padding:20px 16px 16px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;">
+      <div>
+        <div style="font-size:20px;font-weight:800;color:${CW};">🚚 Control de Entregas</div>
+        <div style="font-size:12px;color:rgba(255,255,255,0.8);margin-top:3px;">${pend.length} entrega${pend.length!==1?"s":""} pendiente${pend.length!==1?"s":""}</div>
+      </div>
+      <button onclick="setState({tab:'mas'})"
+        style="background:rgba(255,255,255,0.15);border:none;border-radius:9px;
+        padding:7px 12px;color:${CW};font-size:13px;cursor:pointer;">← Volver</button>
+    </div>
+  </div>
+  <div style="padding:14px 14px 80px;">
+    ${pend.length===0?`<div style="text-align:center;padding:56px 20px;color:#94A3B8;">
+      <div style="font-size:40px;margin-bottom:12px;">✅</div>
+      <div style="font-size:15px;font-weight:700;">Todo entregado</div>
+      <div style="font-size:13px;margin-top:6px;">No hay entregas pendientes</div>
+    </div>`:""}
+    ${yo.length>0?`
+    <div style="font-size:12px;font-weight:800;color:${CB};text-transform:uppercase;letter-spacing:0.6px;margin-bottom:8px;">🚗 Yo entrego (${yo.length})</div>
+    ${yo.map(p=>entregaCard(p)).join("")}`:""}
+    ${bod.length>0?`
+    <div style="font-size:12px;font-weight:800;color:${CO};text-transform:uppercase;letter-spacing:0.6px;margin-top:${yo.length>0?"14px":"0"};margin-bottom:8px;">🏭 Bodega entrega (${bod.length})</div>
+    ${bod.map(p=>entregaCard(p)).join("")}
+    <button onclick="compartirListaBodega()"
+      style="width:100%;background:#25D366;border:none;border-radius:12px;padding:12px;
+      color:${CW};font-size:14px;font-weight:700;cursor:pointer;margin-top:8px;">
+      📲 Enviar lista a bodega por WhatsApp</button>`:""}
+  </div></div>`;
+}
+
+function entregaCard(p){
+  var dias=diasDesde(p.fecha);
+  var urgente=dias>=1;
+  return`<div style="background:${CW};border-radius:13px;padding:13px;margin-bottom:8px;
+    box-shadow:0 1px 3px rgba(0,0,0,0.06);border-left:4px solid ${urgente?CR:CO};">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:14px;font-weight:700;color:${CN};margin-bottom:2px;">${h(p.cliente)}</div>
+        <div style="font-size:11px;color:#64748B;">${fmtNota(p.numeroNota)} · ${h(p.fecha||"")} · ${h(p.sistema||"")}</div>
+        ${p.notas?`<div style="font-size:11px;color:${CA};margin-top:3px;">📝 ${h(p.notas)}</div>`:""}
+      </div>
+      <div style="text-align:right;flex-shrink:0;margin-left:10px;">
+        <div style="font-size:14px;font-weight:700;color:${CN};">${fmtM(p.montoConIVA||p.monto)}</div>
+        ${urgente?`<div style="font-size:10px;color:${CR};font-weight:700;">hace ${dias}d</div>`:""}
+      </div>
+    </div>
+    <div style="display:flex;gap:6px;">
+      <button onclick="marcarEntregado('${p.id}')"
+        style="flex:1;background:${CG};border:none;border-radius:9px;padding:9px;
+        color:${CW};font-size:13px;font-weight:700;cursor:pointer;">✓ Entregado</button>
+      ${p.clienteActivo||p.clienteId?`<button onclick="setState({tab:'ruta'})"
+        style="background:#F1F5F9;border:none;border-radius:9px;padding:9px 13px;
+        color:#64748B;font-size:13px;cursor:pointer;">Ver cliente</button>`:""}
+    </div>
+  </div>`;
+}
+
+async function marcarEntregado(id){
+  try{
+    await db.collection("pedidos").doc(id).update({
+      "entrega.estado":"entregado",
+      "entrega.fechaEntrega":fmtF(),
+      ts:firebase.firestore.FieldValue.serverTimestamp()
+    });
+    var idx=ST.pedidos.findIndex(p=>p.id===id);
+    if(idx>=0){
+      if(!ST.pedidos[idx].entrega) ST.pedidos[idx].entrega={};
+      ST.pedidos[idx].entrega.estado="entregado";
+      ST.pedidos[idx].entrega.fechaEntrega=fmtF();
+    }
+    toast("✓ Marcado como entregado",CG);render();
+  }catch(e){toast("Error: "+e.message,CR);}
+}
+
+function compartirListaBodega(){
+  var bod=ST.pedidos.filter(p=>p.entrega&&p.entrega.estado!=="entregado"&&p.entrega.responsable==="bodega");
+  if(bod.length===0){toast("No hay entregas de bodega pendientes",CA);return;}
+  var txt="*📦 Lista de Entregas — Bodega*\n"+fmtF()+"\n\n";
+  bod.forEach((p,i)=>{
+    txt+=(i+1)+". *"+p.cliente+"*\n";
+    txt+="   Nota: "+fmtNota(p.numeroNota)+" · "+fmtM(p.montoConIVA||p.monto)+"\n";
+    if(p.notas) txt+="   Nota: "+p.notas+"\n";
+    txt+="\n";
+  });
+  txt+="_Enviado desde La Clínica Ruta_";
+  var url="https://wa.me/?text="+encodeURIComponent(txt);
+  window.open(url,"_blank");
 }
 
 // ── CLIENTES ADMIN ────────────────────────────────────────────────
@@ -1395,7 +1526,17 @@ function mGuardarPedido(){
     style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:14px;outline:none;margin-bottom:12px;"/>
   <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:6px;">Notas (opcional)</label>
   <input id="gp_notas" type="text" placeholder="Instrucciones de entrega..."
-    style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:14px;outline:none;margin-bottom:16px;"/>
+    style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:14px;outline:none;margin-bottom:14px;"/>
+  <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:7px;">¿Quién hace la entrega?</label>
+  <div style="display:flex;gap:8px;margin-bottom:16px;">
+    <button id="er_v" onclick="setEntregaResp('vendedor')"
+      style="flex:1;padding:11px;border-radius:10px;border:2px solid ${CB};background:#EFF6FF;color:${CB};font-weight:700;font-size:13px;cursor:pointer;">
+      🚗 Yo entrego</button>
+    <button id="er_b" onclick="setEntregaResp('bodega')"
+      style="flex:1;padding:11px;border-radius:10px;border:2px solid #E2E8F0;background:${CW};color:#64748B;font-weight:700;font-size:13px;cursor:pointer;">
+      🏭 Bodega</button>
+  </div>
+  <input type="hidden" id="gp_resp" value="vendedor"/>
   <button onclick="guardarPedido()"
     style="width:100%;background:${CG};border:none;border-radius:13px;padding:14px;
     color:${CW};font-size:16px;font-weight:700;cursor:pointer;margin-bottom:8px;">✓ Guardar Pedido</button>
