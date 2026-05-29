@@ -53,7 +53,7 @@ var ST={
   clienteActivo:null,
   carrito:[],
   sistemaCarrito:"Perseo",
-  search:"", searchCat:"", filtroCat:"Todos", filtroZona:"Todos", filtroDia:"Hoy",
+  search:"", searchCat:"", searchCobro:"", filtroCat:"Todos", filtroZona:"Todos", filtroDia:"Hoy",
   modal:null, toast:null, toastT:null,
   _saving:false
 };
@@ -441,6 +441,17 @@ function htmlRuta(){
         📊
       </button>
     </div>
+    ${(()=>{
+      var hoyStr=fmtF();
+      var acuerdosHoy=ST.pedidos.filter(p=>(p.estadoCobro!=="cobrado")&&p.acuerdoPago&&
+        (p.acuerdoPago.fecha===hoyStr||fechaPasada(p.acuerdoPago.fecha))).length;
+      return acuerdosHoy>0?`<button onclick="setState({tab:'cobranza'})"
+        style="width:100%;background:${CA};border:none;border-radius:11px;padding:9px 13px;
+        color:${CW};font-size:12px;font-weight:700;cursor:pointer;margin-bottom:10px;
+        display:flex;align-items:center;justify-content:space-between;">
+        <span>🤝 ${acuerdosHoy} cobro${acuerdosHoy!==1?"s":""} prometido${acuerdosHoy!==1?"s":""} para hoy</span><span>Ver →</span>
+      </button>`:"";
+    })()}
     ${(()=>{var venc=ST.pendientes.filter(p=>!p.completado&&fechaPasada(p.fecha)).length;
     return venc>0?`<button onclick="setState({tab:'pendientes'})"
       style="width:100%;background:${CR};border:none;border-radius:11px;padding:9px 13px;
@@ -698,6 +709,63 @@ function debRuta(v){
   },150);
 }
 
+var _cobroTimer=null;
+function debCobro(v){
+  clearTimeout(_cobroTimer);
+  ST.searchCobro=v;
+  _cobroTimer=setTimeout(()=>{
+    var q=v.toLowerCase();
+    var hoy=new Date();hoy.setHours(0,0,0,0);
+    var pend=ST.pedidos.filter(p=>(p.estadoCobro!=="cobrado")&&(p.saldoPendiente||0)>0);
+    if(q) pend=pend.filter(p=>(p.cliente||"").toLowerCase().includes(q));
+    pend=pend.sort((a,b)=>(a.cliente||"").localeCompare(b.cliente||""));
+    var el=$("cobro_list");
+    if(el) el.innerHTML=buildCobroCards(pend,hoy);
+  },250);
+}
+function buildCobroCards(pend,hoy){
+  if(!pend.length) return`<div style="text-align:center;padding:48px 20px;color:#94A3B8;font-size:15px;">
+    🎉 No hay cobros pendientes</div>`;
+  return pend.map(p=>{
+    var vencido=false;
+    if(p.vence){var pts=p.vence.split("/");
+      if(pts.length===3){var vd=new Date(parseInt(pts[2]),parseInt(pts[1])-1,parseInt(pts[0]));vencido=vd<hoy;}}
+    var acuerdo=p.acuerdoPago;
+    var acuerdoHoy=acuerdo&&acuerdo.fecha===fmtF();
+    var acuerdoVenc=acuerdo&&fechaPasada(acuerdo.fecha);
+    return`<div style="background:${CW};border-radius:14px;padding:13px;margin-bottom:9px;
+      box-shadow:0 1px 4px rgba(0,0,0,0.06);border-left:4px solid ${acuerdoHoy||acuerdoVenc?CG:vencido?CR:CA};">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:9px;">
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:14px;font-weight:700;color:${CN};">${h(p.cliente)}</div>
+          <div style="font-size:11px;color:#64748B;margin-top:2px;">
+            ${h(p.fecha||"")}${p.factura?" · "+h(p.factura):""}${p.sistema?" · "+h(p.sistema):""}
+          </div>
+          ${vencido?`<div style="color:${CR};font-size:11px;font-weight:800;margin-top:3px;">⚠️ VENCIDO${p.vence?" — "+h(p.vence):""}</div>`:
+            p.vence?`<div style="color:#64748B;font-size:11px;margin-top:3px;">Vence ${h(p.vence)}</div>`:""}
+          ${acuerdo?`<div style="font-size:11px;margin-top:4px;color:${acuerdoHoy?CG:acuerdoVenc?CR:CA};font-weight:700;">
+            🤝 Prometió pagar: ${h(acuerdo.fecha)}${acuerdo.nota?" — "+h(acuerdo.nota):""}
+            ${acuerdoHoy?"· HOY":""}${acuerdoVenc?"· VENCIDO":""}
+          </div>`:""}
+        </div>
+        <div style="text-align:right;flex-shrink:0;margin-left:10px;">
+          ${(p.montoConIVA||p.monto)?`<div style="font-size:11px;color:#94A3B8;">Total ${fmtM(p.montoConIVA||p.monto)}</div>`:""}
+          <div style="font-size:18px;font-weight:800;color:${CR};">${fmtM(p.saldoPendiente)}</div>
+          <div style="font-size:10px;color:#94A3B8;">pendiente</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:6px;">
+        <button onclick="abrirCobro('${p.id}')"
+          style="flex:1;background:${CG};border:none;border-radius:9px;padding:9px;
+          color:${CW};font-weight:700;font-size:13px;cursor:pointer;">💵 Cobrar</button>
+        <button onclick="setState({modal:{tipo:'acuerdo',pedido:ST.pedidos.find(x=>x.id==='${p.id}')}})"
+          style="background:#FFFBEB;border:1px solid ${CA};border-radius:9px;padding:9px 12px;
+          color:${CA};font-weight:700;font-size:12px;cursor:pointer;">🤝 Acuerdo</button>
+      </div>
+    </div>`;
+  }).join("");
+}
+
 function agregarProd(id){
   if(!ST.clienteActivo){toast("Primero seleccioná un cliente en Mi Ruta",CA);return;}
   var p=ST.catalogo.find(x=>x.id===id);
@@ -933,52 +1001,41 @@ async function guardarPedido(){
 // TAB 4 — COBRANZA
 // ═══════════════════════════════════════════════════════════════════
 function htmlCobranza(){
-  var pend=ST.pedidos.filter(p=>(p.estadoCobro!=="cobrado")&&(p.saldoPendiente||0)>0)
-    .sort((a,b)=>(a.cliente||"").localeCompare(b.cliente||""));
-  var total=pend.reduce((s,p)=>s+(p.saldoPendiente||0),0);
-  var hoy=new Date();
-
+  var todoPend=ST.pedidos.filter(p=>(p.estadoCobro!=="cobrado")&&(p.saldoPendiente||0)>0);
+  var q=ST.searchCobro||"";
+  var pend=q?todoPend.filter(p=>(p.cliente||"").toLowerCase().includes(q.toLowerCase())):todoPend;
+  pend=pend.sort((a,b)=>(a.cliente||"").localeCompare(b.cliente||""));
+  var total=todoPend.reduce((s,p)=>s+(p.saldoPendiente||0),0);
+  var hoyStr=fmtF();
+  var cobradoHoy=ST.pedidos.filter(p=>p.fechaCobro===hoyStr).reduce((s,p)=>s+(p.montoConIVA||p.monto||0)-(p.saldoPendiente||0),0);
+  var acuerdosHoy=todoPend.filter(p=>p.acuerdoPago&&(p.acuerdoPago.fecha===hoyStr||fechaPasada(p.acuerdoPago.fecha))).length;
+  var hoyD=new Date();hoyD.setHours(0,0,0,0);
   return`<div class="fade">
-  <div style="background:${CR};padding:22px 16px 16px;">
+  <div style="background:${CR};padding:22px 16px 14px;">
     <div style="font-size:20px;font-weight:800;color:${CW};">💰 Cobranza</div>
-    <div style="margin-top:10px;background:rgba(255,255,255,0.15);border-radius:12px;padding:12px;">
-      <div style="font-size:11px;color:rgba(255,255,255,0.75);text-transform:uppercase;letter-spacing:0.5px;">Total por cobrar</div>
-      <div style="font-size:28px;font-weight:800;color:${CW};">${fmtM(total)}</div>
-      <div style="font-size:12px;color:rgba(255,255,255,0.7);">${pend.length} factura${pend.length!==1?"s":""} pendiente${pend.length!==1?"s":""}</div>
+    <div style="display:flex;gap:8px;margin-top:10px;">
+      <div style="flex:1;background:rgba(255,255,255,0.15);border-radius:12px;padding:10px 12px;">
+        <div style="font-size:10px;color:rgba(255,255,255,0.7);text-transform:uppercase;letter-spacing:0.5px;">Por cobrar</div>
+        <div style="font-size:22px;font-weight:800;color:${CW};">${fmtM(total)}</div>
+        <div style="font-size:11px;color:rgba(255,255,255,0.65);">${todoPend.length} factura${todoPend.length!==1?"s":""}</div>
+      </div>
+      <div style="flex:1;background:rgba(255,255,255,0.15);border-radius:12px;padding:10px 12px;">
+        <div style="font-size:10px;color:rgba(255,255,255,0.7);text-transform:uppercase;letter-spacing:0.5px;">Cobrado hoy</div>
+        <div style="font-size:22px;font-weight:800;color:${cobradoHoy>0?"#4ADE80":CW};">${fmtM(cobradoHoy)}</div>
+        ${acuerdosHoy>0?`<div style="font-size:11px;color:#FCD34D;">🤝 ${acuerdosHoy} acuerdo${acuerdosHoy!==1?"s":""} hoy</div>`:
+          `<div style="font-size:11px;color:rgba(255,255,255,0.65);">del día</div>`}
+      </div>
+    </div>
+    <div style="margin-top:10px;position:relative;">
+      <span style="position:absolute;left:11px;top:50%;transform:translateY(-50%);font-size:14px;">🔍</span>
+      <input id="s_cobro" type="text" placeholder="Buscar cliente..."
+        value="${h(ST.searchCobro)}" oninput="debCobro(this.value)"
+        style="width:100%;background:rgba(255,255,255,0.15);border:none;border-radius:10px;
+        padding:9px 12px 9px 34px;color:${CW};font-size:13px;outline:none;"/>
     </div>
   </div>
-
-  <div style="padding:14px 14px 80px;">
-    ${pend.length===0?`<div style="text-align:center;padding:48px 20px;color:#94A3B8;font-size:15px;">
-      🎉 No hay cobros pendientes</div>`:""}
-    ${pend.map(p=>{
-      var vencido=false;
-      if(p.vence){
-        var pts=p.vence.split("/");
-        if(pts.length===3){var vd=new Date(pts[2],pts[1]-1,pts[0]);vencido=vd<hoy;}
-      }
-      return`<div style="background:${CW};border-radius:14px;padding:13px;margin-bottom:9px;
-        box-shadow:0 1px 4px rgba(0,0,0,0.06);border-left:4px solid ${vencido?CR:CA};">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:9px;">
-          <div style="flex:1;min-width:0;">
-            <div style="font-size:14px;font-weight:700;color:${CN};">${h(p.cliente)}</div>
-            <div style="font-size:11px;color:#64748B;margin-top:2px;">
-              ${h(p.fecha||"")}${p.factura?" · "+h(p.factura):""}${p.sistema?" · "+h(p.sistema):""}
-            </div>
-            ${vencido?`<div style="color:${CR};font-size:11px;font-weight:800;margin-top:3px;">⚠️ VENCIDO${p.vence?" — "+h(p.vence):""}</div>`:
-              p.vence?`<div style="color:#64748B;font-size:11px;margin-top:3px;">Vence ${h(p.vence)}</div>`:""}
-          </div>
-          <div style="text-align:right;flex-shrink:0;margin-left:10px;">
-            ${(p.montoConIVA||p.monto)?`<div style="font-size:11px;color:#94A3B8;">Total ${fmtM(p.montoConIVA||p.monto)}</div>`:""}
-            <div style="font-size:18px;font-weight:800;color:${CR};">${fmtM(p.saldoPendiente)}</div>
-            <div style="font-size:10px;color:#94A3B8;">pendiente</div>
-          </div>
-        </div>
-        <button onclick="abrirCobro('${p.id}')"
-          style="width:100%;background:${CG};border:none;border-radius:9px;padding:9px;
-          color:${CW};font-weight:700;font-size:13px;cursor:pointer;">💵 Cobrar</button>
-      </div>`;
-    }).join("")}
+  <div id="cobro_list" style="padding:14px 14px 80px;">
+    ${buildCobroCards(pend,hoyD)}
   </div>
   </div>`;
 }
@@ -1388,6 +1445,7 @@ function htmlModal(){
   if(m.tipo==="nuevoClienteDesdeProspecto") c=mNuevoClienteDesdeProspecto(m.prospecto);
   if(m.tipo==="cierreDia")      c=mCierreDia();
   if(m.tipo==="fichaCliente")   c=mFichaCliente(m.cliente);
+  if(m.tipo==="acuerdo")        c=mAcuerdo(m.pedido);
   return`<div onclick="if(event.target===this)setState({modal:null})"
     style="position:fixed;inset:0;background:rgba(0,0,0,0.48);z-index:500;
     display:flex;align-items:flex-end;justify-content:center;">
@@ -1543,6 +1601,67 @@ function mGuardarPedido(){
   <button onclick="setState({modal:null})"
     style="width:100%;background:none;border:2px solid #E2E8F0;border-radius:13px;padding:12px;
     color:#64748B;font-size:14px;font-weight:600;cursor:pointer;">Cancelar</button>`;
+}
+
+// modal: acuerdo de pago ─────────────────────────────────────────
+function mAcuerdo(p){
+  if(!p) return`${mHeader("Acuerdo de pago")}<p style="color:#64748B;">Error: pedido no encontrado.</p>`;
+  var existing=p.acuerdoPago;
+  return`${mHeader("🤝 Acuerdo de Pago")}
+  <p style="font-size:13px;color:#64748B;margin-top:-10px;margin-bottom:14px;">${h(p.cliente)} · Saldo ${fmtM(p.saldoPendiente)}</p>
+  ${existing?`<div style="background:#FFFBEB;border:1px solid ${CA};border-radius:10px;padding:10px;margin-bottom:14px;">
+    <div style="font-size:12px;font-weight:700;color:${CA};">Acuerdo registrado</div>
+    <div style="font-size:13px;color:${CN};margin-top:3px;">Prometió pagar: <b>${h(existing.fecha)}</b></div>
+    ${existing.nota?`<div style="font-size:12px;color:#64748B;margin-top:2px;">${h(existing.nota)}</div>`:""}
+  </div>`:""}
+  <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:6px;">¿Para cuándo prometió pagar?</label>
+  <input id="ac_fecha" type="date"
+    style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:15px;outline:none;margin-bottom:12px;"/>
+  <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:6px;">Nota (opcional)</label>
+  <input id="ac_nota" type="text" placeholder="Ej: pagará con efectivo en la tarde"
+    style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:14px;outline:none;margin-bottom:16px;"/>
+  <button onclick="guardarAcuerdo('${p.id}')"
+    style="width:100%;background:${CA};border:none;border-radius:13px;padding:14px;
+    color:${CW};font-size:15px;font-weight:700;cursor:pointer;margin-bottom:8px;">🤝 Guardar Acuerdo</button>
+  <button onclick="setState({modal:null})"
+    style="width:100%;background:none;border:2px solid #E2E8F0;border-radius:13px;padding:12px;
+    color:#64748B;font-size:14px;font-weight:600;cursor:pointer;">Cancelar</button>`;
+}
+
+async function guardarAcuerdo(pedidoId){
+  var fechaRaw=val("ac_fecha");
+  if(!fechaRaw){toast("Seleccioná una fecha",CR);return;}
+  var nota=val("ac_nota")||"";
+  var pts=fechaRaw.split("-");
+  var fechaFmt=pts[2]+"/"+pts[1]+"/"+pts[0];
+  var acuerdo={fecha:fechaFmt,nota};
+  try{
+    await db.collection("pedidos").doc(pedidoId).update({
+      acuerdoPago:acuerdo,
+      ts:firebase.firestore.FieldValue.serverTimestamp()
+    });
+    var idx=ST.pedidos.findIndex(p=>p.id===pedidoId);
+    if(idx>=0) ST.pedidos[idx].acuerdoPago=acuerdo;
+    var pedido=ST.pedidos.find(p=>p.id===pedidoId);
+    var clienteNom=pedido?.cliente||"";
+    try{
+      var pRef=await db.collection("pendientes").add({
+        tipo:"acuerdo",
+        descripcion:"Cobro prometido: "+clienteNom+(nota?" — "+nota:""),
+        clienteId:pedido?.clienteId||null,
+        fecha:fechaFmt,
+        completado:false,
+        notas:"Pedido: "+fmtNota(pedido?.numeroNota||0)+" · Saldo: "+fmtM(pedido?.saldoPendiente||0),
+        ts:firebase.firestore.FieldValue.serverTimestamp()
+      });
+      ST.pendientes.unshift({id:pRef.id,tipo:"acuerdo",
+        descripcion:"Cobro prometido: "+clienteNom+(nota?" — "+nota:""),
+        clienteId:pedido?.clienteId||null,fecha:fechaFmt,completado:false,
+        notas:"Pedido: "+fmtNota(pedido?.numeroNota||0)+" · Saldo: "+fmtM(pedido?.saldoPendiente||0)});
+    }catch(e){}
+    toast("✓ Acuerdo registrado para "+fechaFmt,CG);
+    setState({modal:null});
+  }catch(e){toast("Error: "+e.message,CR);}
 }
 
 // modal: cliente ──────────────────────────────────────────────────
