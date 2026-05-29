@@ -53,7 +53,7 @@ var ST={
   clienteActivo:null,
   carrito:[],
   sistemaCarrito:"Perseo",
-  search:"", searchCat:"", searchCobro:"", filtroCat:"Todos", filtroZona:"Todos", filtroDia:"Hoy",
+  search:"", searchCat:"", searchCobro:"", filtroCat:"Todos", filtroZona:"Todos", filtroDia:"Hoy", filtroPedidoCliente:"",
   modal:null, toast:null, toastT:null,
   _saving:false
 };
@@ -617,19 +617,27 @@ function buildProdCards(prods,tarifa,q){
   if(qs.length>0&&qs.length<2) out+=`<div style="text-align:center;padding:32px;color:#94A3B8;font-size:14px;">Escribí al menos 2 letras...</div>`;
   if(!prods.length&&qs.length>=2) out+=`<div style="text-align:center;padding:32px;color:#94A3B8;font-size:14px;">Sin resultados para "${h(qs)}"</div>`;
   out+=prods.map(p=>{
-    var precio=getPrecio(p,tarifa);
+    var precEsp=ST.clienteActivo?.preciosEspeciales?.find(x=>x.productoId===p.id);
+    var precio=precEsp?precEsp.precio:getPrecio(p,tarifa);
     var en=ST.carrito.find(x=>x.id===p.id);
     var qty=en?en.cantidad:0;
+    var stk=p.stockActual;
+    var sinStk=stk!=null&&stk<=0;
+    var stokBajo=stk!=null&&p.stockMinimo!=null&&stk>0&&stk<=p.stockMinimo;
     return`<div style="background:${CW};border-radius:13px;padding:12px;margin-bottom:7px;
-      box-shadow:0 1px 3px rgba(0,0,0,0.06);display:flex;align-items:center;gap:10px;">
+      box-shadow:0 1px 3px rgba(0,0,0,0.06);display:flex;align-items:center;gap:10px;
+      opacity:${sinStk?0.65:1};">
       <div style="flex:1;min-width:0;">
-        <div style="font-size:11px;color:#94A3B8;">${h(p.codigo||"")}${p.categoria?" · "+h(p.categoria):""}</div>
+        <div style="font-size:11px;color:#94A3B8;">${h(p.codigo||"")}${p.categoria?" · "+h(p.categoria):""}
+          ${sinStk?`<span style="color:${CR};font-weight:800;"> · SIN STOCK</span>`:""}
+          ${stokBajo?`<span style="color:${CA};font-weight:700;"> · Stock: ${stk}</span>`:""}</div>
         <div style="font-size:14px;font-weight:700;color:${CN};margin:2px 0;line-height:1.2;">${h(p.nombre)}</div>
-        <div style="display:flex;align-items:center;gap:7px;margin-top:3px;">
-          <span style="font-size:17px;font-weight:800;color:${CG};">${fmtM(precio)}</span>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:3px;">
+          <span style="font-size:17px;font-weight:800;color:${precEsp?CP:CG};">${fmtM(precio)}</span>
+          ${precEsp?`<span style="font-size:9px;background:#F5F3FF;color:${CP};padding:2px 7px;border-radius:5px;font-weight:800;">★ Especial</span>`:""}
           <button onclick="event.stopPropagation();verTarifas('${p.id}')"
             style="background:#F1F5F9;border:none;border-radius:7px;padding:2px 8px;
-            font-size:10px;color:#64748B;cursor:pointer;font-weight:600;">ver tarifas 👁</button>
+            font-size:10px;color:#64748B;cursor:pointer;font-weight:600;">👁 tarifas</button>
           ${p.sistema?`<span style="font-size:10px;background:${p.sistema==="Perseo"?"#EFF6FF":"#F5F3FF"};
             color:${p.sistema==="Perseo"?CB:CP};padding:2px 6px;border-radius:5px;font-weight:600;">
             ${p.sistema}</span>`:""}
@@ -709,6 +717,31 @@ function debRuta(v){
   },150);
 }
 
+function comprimirFoto(file){
+  return new Promise((resolve,reject)=>{
+    var reader=new FileReader();
+    reader.onload=e=>{
+      var img=new Image();
+      img.onload=()=>{
+        var canvas=document.createElement("canvas");
+        var maxD=800;
+        var w=img.width,ht=img.height;
+        if(w>maxD){ht=Math.round(ht*maxD/w);w=maxD;}
+        if(ht>maxD){w=Math.round(w*maxD/ht);ht=maxD;}
+        canvas.width=w;canvas.height=ht;
+        canvas.getContext("2d").drawImage(img,0,0,w,ht);
+        var q=0.72,b64=canvas.toDataURL("image/jpeg",q);
+        while(b64.length>153600&&q>0.2){q-=0.1;b64=canvas.toDataURL("image/jpeg",q);}
+        resolve(b64);
+      };
+      img.onerror=reject;
+      img.src=e.target.result;
+    };
+    reader.onerror=reject;
+    reader.readAsDataURL(file);
+  });
+}
+
 var _cobroTimer=null;
 function debCobro(v){
   clearTimeout(_cobroTimer);
@@ -737,7 +770,8 @@ function buildCobroCards(pend,hoy){
       box-shadow:0 1px 4px rgba(0,0,0,0.06);border-left:4px solid ${acuerdoHoy||acuerdoVenc?CG:vencido?CR:CA};">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:9px;">
         <div style="flex:1;min-width:0;">
-          <div style="font-size:14px;font-weight:700;color:${CN};">${h(p.cliente)}</div>
+          <div onclick="p.clienteId&&irACliente('${p.clienteId}')"
+            style="font-size:14px;font-weight:700;color:${CN};cursor:pointer;display:inline-block;">${h(p.cliente)}</div>
           <div style="font-size:11px;color:#64748B;margin-top:2px;">
             ${h(p.fecha||"")}${p.factura?" · "+h(p.factura):""}${p.sistema?" · "+h(p.sistema):""}
           </div>
@@ -770,14 +804,16 @@ function agregarProd(id){
   if(!ST.clienteActivo){toast("Primero seleccioná un cliente en Mi Ruta",CA);return;}
   var p=ST.catalogo.find(x=>x.id===id);
   if(!p) return;
-  var precio=getPrecio(p,ST.clienteActivo.precio||"C");
+  var precEsp=ST.clienteActivo?.preciosEspeciales?.find(x=>x.productoId===id);
+  var precio=precEsp?precEsp.precio:getPrecio(p,ST.clienteActivo.precio||"C");
+  if(p.stockActual!=null&&p.stockActual<=0) toast("⚠️ Sin stock registrado para este producto",CA);
   var idx=ST.carrito.findIndex(x=>x.id===id);
   if(idx>=0){
     ST.carrito[idx].cantidad++;
     ST.carrito[idx].subtotal=ST.carrito[idx].cantidad*precio;
   } else {
     ST.carrito.push({id,codigo:p.codigo,nombre:p.nombre,cantidad:1,
-      precio,subtotal:precio,sistema:p.sistema||"Perseo"});
+      precio,subtotal:precio,sistema:p.sistema||"Perseo",esEspecial:!!precEsp});
   }
   saveCart();
   var qEl=$("pcq_"+id);
@@ -1117,13 +1153,22 @@ function subHeader(titulo,icon){
 // ── PEDIDOS ───────────────────────────────────────────────────────
 function htmlPedidos(){
   var colE={tomado:CA,facturado:CB,despachado:CO,entregado:CG,cancelado:"#94A3B8"};
+  var filtCli=ST.filtroPedidoCliente||"";
+  var lista=filtCli?ST.pedidos.filter(p=>p.clienteId===filtCli):ST.pedidos;
+  var nomFiltro=filtCli?(ST.clientes.find(x=>x.id===filtCli)?.nombre||""):"";
   return`<div class="fade">${subHeader("Pedidos","📦")}
+  ${filtCli?`<div style="background:#EFF6FF;padding:8px 14px;display:flex;align-items:center;justify-content:space-between;">
+    <div style="font-size:12px;color:${CB};font-weight:700;">📍 ${h(nomFiltro)} — ${lista.length} pedido${lista.length!==1?"s":""}</div>
+    <button onclick="setState({filtroPedidoCliente:''})"
+      style="background:none;border:none;color:${CB};font-size:12px;font-weight:700;cursor:pointer;">✕ Ver todos</button>
+  </div>`:""}
   <div style="padding:14px 14px 80px;">
-    ${ST.pedidos.length===0?`<div style="text-align:center;padding:48px;color:#94A3B8;">Sin pedidos</div>`:""}
-    ${ST.pedidos.slice(0,80).map(p=>`<div style="background:${CW};border-radius:13px;padding:13px;margin-bottom:8px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+    ${lista.length===0?`<div style="text-align:center;padding:48px;color:#94A3B8;">Sin pedidos</div>`:""}
+    ${lista.slice(0,80).map(p=>`<div style="background:${CW};border-radius:13px;padding:13px;margin-bottom:8px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">
         <div>
-          <div style="font-size:14px;font-weight:700;color:${CN};">${h(p.cliente)}</div>
+          <div onclick="p.clienteId&&irACliente('${p.clienteId}')"
+            style="font-size:14px;font-weight:700;color:${CN};cursor:pointer;display:inline-block;">${h(p.cliente)}</div>
           <div style="font-size:11px;color:#64748B;">${h(p.fecha||"")} · ${h(p.sistema||"")}</div>
         </div>
         <div style="text-align:right;">
@@ -1143,6 +1188,8 @@ function htmlPedidos(){
           style="background:${CO};border:none;border-radius:7px;padding:6px 12px;color:${CW};font-size:12px;font-weight:600;cursor:pointer;">📦 Despachar</button>`:""}
         ${p.estado==="despachado"?`<button onclick="cambiarEstado('${p.id}','entregado')"
           style="background:${CG};border:none;border-radius:7px;padding:6px 12px;color:${CW};font-size:12px;font-weight:600;cursor:pointer;">✓ Entregar</button>`:""}
+        ${(p.saldoPendiente||0)>0?`<button onclick="abrirCobro('${p.id}')"
+          style="background:${CG};border:none;border-radius:7px;padding:6px 12px;color:${CW};font-size:12px;font-weight:600;cursor:pointer;">💵 Cobrar</button>`:""}
       </div>
     </div>`).join("")}
   </div></div>`;
@@ -1511,6 +1558,16 @@ function mCobrar(p){
     <input id="cb_ref" type="text" placeholder="Referencia"
       style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:15px;outline:none;"/>
   </div>
+  <div style="margin-bottom:14px;">
+    <label style="font-size:12px;font-weight:700;color:#64748B;display:block;margin-bottom:5px;">📷 Foto de comprobante (opcional)</label>
+    <label style="display:flex;align-items:center;gap:9px;cursor:pointer;
+      background:#F8FAFC;border:2px dashed #E2E8F0;border-radius:10px;padding:10px 12px;">
+      <span style="font-size:20px;">📷</span>
+      <span id="cb_flbl" style="font-size:12px;color:#64748B;">Tomar o adjuntar foto</span>
+      <input id="cb_foto" type="file" accept="image/*" capture="environment" style="display:none;"
+        onchange="var l=$('cb_flbl');if(this.files[0]){l.textContent='✓ '+this.files[0].name;l.style.color='${CG}';}"/>
+    </label>
+  </div>
   <button onclick="procesarCobro('${p.id}')"
     style="width:100%;background:${CG};border:none;border-radius:13px;padding:14px;
     color:${CW};font-size:16px;font-weight:700;cursor:pointer;">✓ Procesar Cobro</button>`;
@@ -1538,13 +1595,17 @@ async function procesarCobro(id){
   if(!monto||monto<=0){toast("Ingresá un monto válido",CR);return;}
   var p=ST.pedidos.find(x=>x.id===id);
   if(!p) return;
+  var fotoFile=$("cb_foto")?.files?.[0];
+  var fotoB64=null;
+  if(fotoFile){try{fotoB64=await comprimirFoto(fotoFile);}catch(e){}}
   var nuevo=Math.max(0,(p.saldoPendiente||0)-monto);
   var estadoCobro=nuevo<0.01?"cobrado":"parcial";
+  var upd={saldoPendiente:nuevo,estadoCobro,formaCobro:forma,refCobro:ref,
+    fechaCobro:fmtF(),montoCobrado:(p.montoCobrado||0)+monto,
+    ts:firebase.firestore.FieldValue.serverTimestamp()};
+  if(fotoB64) upd.fotoCobro=fotoB64;
   try{
-    await db.collection("pedidos").doc(id).update({
-      saldoPendiente:nuevo,estadoCobro,formaCobro:forma,refCobro:ref,fechaCobro:fmtF(),
-      ts:firebase.firestore.FieldValue.serverTimestamp()
-    });
+    await db.collection("pedidos").doc(id).update(upd);
     var idx=ST.pedidos.findIndex(x=>x.id===id);
     if(idx>=0){ST.pedidos[idx].saldoPendiente=nuevo;ST.pedidos[idx].estadoCobro=estadoCobro;}
     var cId=p.clienteId;
@@ -1840,12 +1901,29 @@ function camposProd(pre){
         style="width:100%;border:2px solid #E2E8F0;border-radius:10px;padding:11px;font-size:15px;font-weight:700;outline:none;"/>
     </div>`).join("")}
   </div>
-  <div style="margin-bottom:16px;">
-    <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Sistema</label>
-    <select id="pd_sis" style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:14px;outline:none;background:${CW};">
-      <option${(pre?.sistema||"Perseo")==="Perseo"?" selected":""}>Perseo</option>
-      <option${pre?.sistema==="Importados"?" selected":""}>Importados</option>
-    </select>
+  <div style="display:flex;gap:8px;margin-bottom:12px;">
+    <div style="flex:1;">
+      <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Sistema</label>
+      <select id="pd_sis" style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:14px;outline:none;background:${CW};">
+        <option${(pre?.sistema||"Perseo")==="Perseo"?" selected":""}>Perseo</option>
+        <option${pre?.sistema==="Importados"?" selected":""}>Importados</option>
+      </select>
+    </div>
+  </div>
+  <div style="font-size:13px;font-weight:700;color:${CN};margin-bottom:7px;">📦 Stock en bodega</div>
+  <div style="display:flex;gap:8px;margin-bottom:16px;">
+    <div style="flex:1;">
+      <label style="font-size:12px;color:#64748B;display:block;margin-bottom:4px;">Stock actual</label>
+      <input id="pd_stock" type="number" step="1" placeholder="—"
+        value="${pre?.stockActual!=null?pre.stockActual:""}"
+        style="width:100%;border:2px solid #E2E8F0;border-radius:10px;padding:11px;font-size:15px;font-weight:700;outline:none;"/>
+    </div>
+    <div style="flex:1;">
+      <label style="font-size:12px;color:#64748B;display:block;margin-bottom:4px;">Stock mínimo</label>
+      <input id="pd_smin" type="number" step="1" placeholder="—"
+        value="${pre?.stockMinimo!=null?pre.stockMinimo:""}"
+        style="width:100%;border:2px solid #E2E8F0;border-radius:10px;padding:11px;font-size:15px;font-weight:700;outline:none;"/>
+    </div>
   </div>`;
 }
 
@@ -1867,11 +1945,15 @@ function mNuevoProducto(){
 async function guardarNuevoProducto(){
   var nombre=val("pd_nom");
   if(!nombre){toast("El nombre es obligatorio",CR);return;}
+  var stkRaw=val("pd_stock"),sminRaw=val("pd_smin");
   var data={codigo:val("pd_cod"),nombre,categoria:val("pd_cat")||"General",
     costo:parseFloat(val("pd_costo")||0),
     precioA:parseFloat(val("pd_pA")||0),precioB:parseFloat(val("pd_pB")||0),
     precioC:parseFloat(val("pd_pC")||0),precioD:parseFloat(val("pd_pD")||0),
     sistema:val("pd_sis")||"Perseo",disponible:"Disponible",
+    stockActual:stkRaw!==""?parseInt(stkRaw):null,
+    stockMinimo:sminRaw!==""?parseInt(sminRaw):null,
+    ultimaActualizacion:fmtF(),
     ts:firebase.firestore.FieldValue.serverTimestamp()};
   try{
     var ref=await db.collection("catalogo").add(data);
@@ -1894,11 +1976,16 @@ function mEditarProducto(p){
 async function actualizarProducto(id){
   var nombre=val("pd_nom");
   if(!nombre){toast("El nombre es obligatorio",CR);return;}
+  var stkRaw=val("pd_stock"),sminRaw=val("pd_smin");
   var data={codigo:val("pd_cod"),nombre,categoria:val("pd_cat")||"General",
     costo:parseFloat(val("pd_costo")||0),
     precioA:parseFloat(val("pd_pA")||0),precioB:parseFloat(val("pd_pB")||0),
     precioC:parseFloat(val("pd_pC")||0),precioD:parseFloat(val("pd_pD")||0),
-    sistema:val("pd_sis")||"Perseo",ts:firebase.firestore.FieldValue.serverTimestamp()};
+    sistema:val("pd_sis")||"Perseo",
+    stockActual:stkRaw!==""?parseInt(stkRaw):null,
+    stockMinimo:sminRaw!==""?parseInt(sminRaw):null,
+    ultimaActualizacion:fmtF(),
+    ts:firebase.firestore.FieldValue.serverTimestamp()};
   try{
     await db.collection("catalogo").doc(id).update(data);
     var idx=ST.catalogo.findIndex(p=>p.id===id);
@@ -2076,7 +2163,8 @@ function htmlCartera(){
         box-shadow:0 1px 4px rgba(0,0,0,0.07);border-left:4px solid ${limiteAlc?CR:CA};">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
           <div style="flex:1;min-width:0;">
-            <div style="font-size:15px;font-weight:800;color:${CN};">${h(c.nombre)}</div>
+            <div onclick="irACliente('${c.id}')"
+              style="font-size:15px;font-weight:800;color:${CN};cursor:pointer;display:inline-block;">${h(c.nombre)}</div>
             <div style="font-size:11px;color:#64748B;margin-top:2px;">${h(c.encargado||"")}${c.zona?" · "+h(c.zona):""}  · Tarifa ${h(c.precio||"C")}</div>
             ${c.condicionesPago?`<div style="font-size:11px;color:${CB};margin-top:3px;">💬 ${h(c.condicionesPago)}</div>`:""}
             ${c.limiteCred?`<div style="font-size:11px;margin-top:3px;color:${limiteAlc?CR:"#64748B"};">
@@ -2091,15 +2179,18 @@ function htmlCartera(){
           <span style="font-size:11px;color:#64748B;">${h(p.fecha||"")} · ${h(p.sistema||"")}</span>
           <span style="font-size:12px;font-weight:700;color:${CR};">${fmtM(p.saldoPendiente)}</span>
         </div>`).join("")}
-        <div style="display:flex;gap:7px;margin-top:8px;">
+        <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;">
           <button onclick="selCliente('${c.id}');setState({tab:'catalogo'})"
-            style="flex:1;background:${CN};border:none;border-radius:9px;padding:9px;
-            color:${CW};font-size:12px;font-weight:700;cursor:pointer;">🛒 Nuevo pedido</button>
+            style="flex:1;min-width:80px;background:${CN};border:none;border-radius:9px;padding:9px;
+            color:${CW};font-size:12px;font-weight:700;cursor:pointer;">🛒 Pedido</button>
           <button onclick="abrirCobroCliente('${c.id}')"
-            style="flex:1;background:${CG};border:none;border-radius:9px;padding:9px;
+            style="flex:1;min-width:70px;background:${CG};border:none;border-radius:9px;padding:9px;
             color:${CW};font-size:12px;font-weight:700;cursor:pointer;">💵 Cobrar</button>
+          <button onclick="verPedidosDeCliente('${c.id}')"
+            style="background:#F1F5F9;border:none;border-radius:9px;padding:9px 11px;
+            font-size:11px;font-weight:700;color:${CN};cursor:pointer;">📦</button>
           ${c.tel?`<a href="tel:${h(c.tel)}"
-            style="background:#EFF6FF;border:none;border-radius:9px;padding:9px 13px;
+            style="background:#EFF6FF;border:none;border-radius:9px;padding:9px 11px;
             font-size:13px;text-decoration:none;color:${CB};">📞</a>`:""}
         </div>
       </div>`;
@@ -2155,6 +2246,14 @@ function mVerNota(p){
       Vendedor: ${h(p.vendedor||ST.perfil?.nombre||"")}
     </div>
   </div>
+  ${p.fotoCobro?`<div style="margin-bottom:12px;">
+    <div style="font-size:11px;font-weight:700;color:#64748B;margin-bottom:5px;">📷 Foto de cobro</div>
+    <img src="${h(p.fotoCobro)}" style="width:100%;border-radius:10px;max-height:200px;object-fit:cover;"/>
+  </div>`:""}
+  ${p.fotoEntrega?`<div style="margin-bottom:12px;">
+    <div style="font-size:11px;font-weight:700;color:#64748B;margin-bottom:5px;">📷 Foto de entrega</div>
+    <img src="${h(p.fotoEntrega)}" style="width:100%;border-radius:10px;max-height:200px;object-fit:cover;"/>
+  </div>`:""}
   <button onclick="compartirNotaWA('${p.id}')"
     style="width:100%;background:#25D366;border:none;border-radius:13px;padding:13px;
     color:${CW};font-size:15px;font-weight:700;cursor:pointer;margin-bottom:8px;
@@ -2221,9 +2320,14 @@ function htmlPendientes(){
               <span style="color:#94A3B8;font-size:11px;">${h(p.fecha||"")}</span>
             </div>
             <div style="font-size:14px;font-weight:600;color:${vencido?CR:CN};line-height:1.3;">${h(p.descripcion||"")}</div>
-            ${c?`<button onclick="selCliente('${c.id}')"
-              style="background:none;border:none;color:${CB};font-size:12px;
-              font-weight:700;cursor:pointer;padding:3px 0;margin-top:3px;">📍 ${h(c.nombre)}</button>`:""}
+            ${c?`<div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
+              <button onclick="irACliente('${c.id}')"
+                style="background:none;border:none;color:${CB};font-size:12px;
+                font-weight:700;cursor:pointer;padding:0;">📍 ${h(c.nombre)}</button>
+              ${(p.tipo==="cobro"||p.tipo==="acuerdo")?`<button onclick="setState({tab:'cobranza',searchCobro:'${h(c.nombre)}'})"
+                style="background:#FFFBEB;border:1px solid ${CA};border-radius:6px;
+                padding:2px 7px;color:${CA};font-size:10px;font-weight:700;cursor:pointer;">Ver cuenta</button>`:""}
+            </div>`:""}
           </div>
         </div>
       </div>`;
@@ -2418,19 +2522,93 @@ function mFichaCliente(c){
     ${pedidosCliente.length>0?`<span style="font-size:11px;color:#64748B;">Total: <b style="color:${CN};">${pedidosCliente.length}</b> hist.</span>`:""}
   </div>`:`<div style="margin-bottom:14px;"></div>`}
 
+  <!-- Precios especiales -->
+  ${(()=>{
+    var peps=c.preciosEspeciales||[];
+    return`<div style="background:#F8FAFC;border-radius:11px;padding:11px 12px;margin-bottom:14px;">
+      <div style="font-size:10px;font-weight:800;color:${CP};margin-bottom:8px;">★ PRECIOS ESPECIALES</div>
+      ${peps.length?peps.map(e=>{
+        var prod=ST.catalogo.find(x=>x.id===e.productoId);
+        return`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
+          <div style="font-size:12px;color:${CN};flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${prod?h(prod.nombre):h(e.productoId)}</div>
+          <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+            <span style="font-size:13px;font-weight:700;color:${CP};">${fmtM(e.precio)}</span>
+            <button onclick="delPrecioEsp('${c.id}','${e.productoId}')"
+              style="background:#FEE2E2;border:none;border-radius:5px;padding:2px 7px;color:${CR};font-size:11px;cursor:pointer;">✕</button>
+          </div>
+        </div>`;
+      }).join(""):`<div style="font-size:11px;color:#94A3B8;margin-bottom:6px;">Sin precios especiales aún</div>`}
+      <div style="display:flex;gap:5px;margin-top:6px;">
+        <select id="pep_prod" style="flex:1;border:2px solid #E2E8F0;border-radius:8px;padding:7px 6px;font-size:11px;outline:none;background:${CW};min-width:0;">
+          <option value="">Producto...</option>
+          ${ST.catalogo.sort((a,b)=>(a.nombre||"").localeCompare(b.nombre||"")).map(p=>`<option value="${p.id}">${h(p.nombre)}</option>`).join("")}
+        </select>
+        <input id="pep_precio" type="number" step="0.01" placeholder="Precio"
+          style="width:76px;border:2px solid #E2E8F0;border-radius:8px;padding:7px;font-size:13px;font-weight:700;outline:none;"/>
+        <button onclick="addPrecioEsp('${c.id}')"
+          style="background:${CP};border:none;border-radius:8px;padding:7px 11px;color:${CW};font-weight:800;font-size:14px;cursor:pointer;">+</button>
+      </div>
+    </div>`;
+  })()}
+
   <!-- Botones de acción -->
-  <div style="display:flex;gap:8px;">
+  <div style="display:flex;gap:8px;flex-wrap:wrap;">
     <button onclick="selCliente('${c.id}')"
-      style="flex:2;background:${CB};border:none;border-radius:12px;padding:13px;
+      style="flex:2;min-width:120px;background:${CB};border:none;border-radius:12px;padding:13px;
       color:${CW};font-size:14px;font-weight:700;cursor:pointer;">
-      🛒 Tomar Pedido</button>
+      🛒 Pedido</button>
+    <button onclick="verPedidosDeCliente('${c.id}')"
+      style="flex:1;min-width:80px;background:#F1F5F9;border:none;border-radius:12px;padding:13px;
+      color:${CN};font-size:12px;font-weight:700;cursor:pointer;">
+      📦 Pedidos</button>
     ${deuda>0?`<button onclick="setState({modal:null});setTimeout(()=>abrirCobroCliente('${c.id}'),100)"
-      style="flex:1;background:${CG};border:none;border-radius:12px;padding:13px;
+      style="flex:1;min-width:70px;background:${CG};border:none;border-radius:12px;padding:13px;
       color:${CW};font-size:13px;font-weight:700;cursor:pointer;">💵 Cobrar</button>`:""}
     ${c.tel?`<a href="tel:${h(c.tel)}" onclick="setState({modal:null})"
       style="background:#EFF6FF;border:none;border-radius:12px;padding:13px 14px;
       font-size:16px;text-decoration:none;display:flex;align-items:center;">📞</a>`:""}
   </div>`;
+}
+
+async function addPrecioEsp(clienteId){
+  var prodId=val("pep_prod");
+  var precio=parseFloat(val("pep_precio")||0);
+  if(!prodId){toast("Seleccioná un producto",CR);return;}
+  if(!precio||precio<=0){toast("Ingresá un precio válido",CR);return;}
+  var c=ST.clientes.find(x=>x.id===clienteId);if(!c)return;
+  var peps=[...(c.preciosEspeciales||[])].filter(x=>x.productoId!==prodId);
+  peps.push({productoId:prodId,precio});
+  try{
+    await db.collection("clientes").doc(clienteId).update({preciosEspeciales:peps});
+    c.preciosEspeciales=peps;
+    if(ST.clienteActivo?.id===clienteId)ST.clienteActivo.preciosEspeciales=peps;
+    toast("✓ Precio especial guardado",CG);
+    setState({modal:{tipo:"fichaCliente",cliente:c}});
+  }catch(e){toast("Error: "+e.message,CR);}
+}
+
+async function delPrecioEsp(clienteId,prodId){
+  var c=ST.clientes.find(x=>x.id===clienteId);if(!c)return;
+  var peps=(c.preciosEspeciales||[]).filter(x=>x.productoId!==prodId);
+  try{
+    await db.collection("clientes").doc(clienteId).update({preciosEspeciales:peps});
+    c.preciosEspeciales=peps;
+    if(ST.clienteActivo?.id===clienteId)ST.clienteActivo.preciosEspeciales=peps;
+    toast("✓ Precio eliminado",CA);
+    setState({modal:{tipo:"fichaCliente",cliente:c}});
+  }catch(e){toast("Error: "+e.message,CR);}
+}
+
+// ── Navegación cruzada ────────────────────────────────────────────
+function irACliente(id){
+  var c=ST.clientes.find(x=>x.id===id);
+  if(!c)return;
+  ST.clienteActivo=c;saveCart();
+  setState({modal:null,tab:"ruta",search:""});
+}
+
+function verPedidosDeCliente(clienteId){
+  setState({modal:null,tab:"pedidos",filtroPedidoCliente:clienteId});
 }
 
 // ── AJUSTES ────────────────────────────────────────────────────────
