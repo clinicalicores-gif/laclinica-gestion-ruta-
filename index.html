@@ -19,8 +19,8 @@ button:active{opacity:0.82;transform:scale(0.97);}
 ::-webkit-scrollbar{width:3px;}
 ::-webkit-scrollbar-thumb{background:#CBD5E1;border-radius:4px;}
 @media(min-width:768px){
-  body{background:#CBD5E1;}
-  #root{max-width:440px;margin:0 auto;background:#F1F5F9;min-height:100vh;box-shadow:0 0 40px rgba(0,0,0,0.15);}
+  body{background:#E2E8F0;}
+  #root{max-width:none;margin:0;background:transparent;box-shadow:none;}
 }
 input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;}
 </style>
@@ -76,6 +76,8 @@ function render(){
   if(fid){var el=$(fid);if(el){el.focus();if(ss!=null){try{el.setSelectionRange(ss,se);}catch(e){}}}}
 }
 function setState(o){Object.assign(ST,o);render();}
+function isDesktop(){return window.innerWidth>=768;}
+window.addEventListener("resize",(function(){var t;return function(){clearTimeout(t);t=setTimeout(render,150);}})());
 
 function toast(msg,color,dur){
   clearTimeout(ST.toastT);
@@ -227,6 +229,10 @@ async function hacerLogin(){
 
 // ── APP SHELL ─────────────────────────────────────────────────────
 function htmlApp(){
+  if(isDesktop()) return htmlAppDesktop();
+  return htmlAppMobile();
+}
+function htmlAppMobile(){
   var tab=ST.tab;
   var nCart=ST.carrito.reduce((s,i)=>s+i.cantidad,0);
   var rol=ST.perfil?.rol||"vendedor";
@@ -285,6 +291,117 @@ function htmlApp(){
   </div>
 
   ${ST.modal ? htmlModal() : ""}
+  </div>`;
+}
+function htmlAppDesktop(){
+  var tab=ST.tab;
+  var nCart=ST.carrito.reduce((s,i)=>s+i.cantidad,0);
+  var rol=ST.perfil?.rol||"vendedor";
+  return`<div style="display:flex;min-height:100vh;background:#E2E8F0;">
+  ${htmlSidebar(tab,nCart,rol)}
+  <div style="margin-left:240px;flex:1;min-height:100vh;display:flex;flex-direction:column;background:#F1F5F9;">
+    ${ST.toast?`<div id="toast_el" style="position:fixed;top:20px;right:28px;
+      background:${ST.toast.color};color:${CW};padding:11px 20px;border-radius:12px;
+      font-weight:700;font-size:13px;z-index:9999;max-width:340px;text-align:center;
+      box-shadow:0 4px 20px rgba(0,0,0,0.22);">${h(ST.toast.msg)}</div>`:`<div id="toast_el" style="display:none;"></div>`}
+    ${ST.clienteActivo?`
+    <div style="background:${CB};color:${CW};padding:10px 24px;display:flex;
+      align-items:center;justify-content:space-between;position:sticky;top:0;z-index:90;">
+      <div>
+        <div style="font-size:10px;opacity:0.75;text-transform:uppercase;letter-spacing:0.6px;">
+          Tarifa ${h(ST.clienteActivo.precio||"C")} activa</div>
+        <div style="font-size:15px;font-weight:800;line-height:1.2;">${h(ST.clienteActivo.nombre)}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        ${(ST.clienteActivo.pendiente||0)>0
+          ?`<div style="background:${CR};padding:3px 10px;border-radius:20px;font-size:12px;font-weight:700;">
+              Debe ${fmtM(ST.clienteActivo.pendiente)}</div>`:""}
+        <button onclick="limpiarCliente()"
+          style="background:rgba(255,255,255,0.18);border:none;border-radius:8px;
+          padding:5px 10px;color:${CW};font-size:13px;cursor:pointer;">✕ Cambiar cliente</button>
+      </div>
+    </div>`:""}
+    <div style="flex:1;overflow-y:auto;">
+      ${tab==="ruta"      ? htmlRuta()      : ""}
+      ${tab==="catalogo"  ? htmlCatalogo()  : ""}
+      ${tab==="carrito"   ? htmlCarrito()   : ""}
+      ${tab==="cobranza"  ? htmlCobranza()  : ""}
+      ${tab==="mas"       ? htmlMas()       : ""}
+      ${tab==="pedidos"   ? htmlPedidos()   : ""}
+      ${tab==="cladmin"   ? htmlClientesAdmin() : ""}
+      ${tab==="prospectos"? htmlProspectos(): ""}
+      ${tab==="gastos"    ? htmlGastos()    : ""}
+      ${tab==="devoluciones"? htmlDevoluciones():""}
+      ${tab==="catalogo_admin"? htmlCatalogoAdmin():""}
+      ${tab==="cartera"      ? htmlCartera()     :""}
+      ${tab==="pendientes"   ? htmlPendientes()  :""}
+      ${tab==="ajustes"      ? htmlAjustes()     :""}
+      ${tab==="usuarios"  ? htmlUsuarios()  : ""}
+      ${tab==="entregas"  ? htmlEntregas()  : ""}
+    </div>
+  </div>
+  ${ST.modal ? htmlModal() : ""}
+  </div>`;
+}
+function htmlSidebar(tab,nCart,rol){
+  var nombre=getNombre();
+  var vencPend=ST.pendientes.filter(p=>!p.completado&&fechaPasada(p.fecha)).length;
+  var pendEnt=ST.pedidos.filter(p=>p.entrega&&p.entrega.estado!=="entregado").length;
+  function sl(t,icon,label,badge){
+    var active=tab===t;
+    return`<button onclick="setState({tab:'${t}'})"
+      style="width:100%;display:flex;align-items:center;gap:10px;padding:8px 12px;
+      border:none;border-radius:9px;cursor:pointer;text-align:left;margin-bottom:2px;
+      background:${active?"rgba(255,255,255,0.16)":"transparent"};
+      color:${CW};font-size:13px;font-weight:${active?"700":"400"};">
+      <span style="font-size:17px;width:22px;text-align:center;flex-shrink:0;">${icon}</span>
+      <span style="flex:1;">${label}</span>
+      ${(badge||0)>0?`<span style="background:${CR};color:${CW};font-size:9px;font-weight:800;border-radius:10px;padding:1px 6px;">${badge}</span>`:""}
+    </button>`;
+  }
+  return`<div style="width:240px;min-height:100vh;background:${CN};position:fixed;top:0;left:0;
+    display:flex;flex-direction:column;z-index:200;overflow-y:auto;">
+    <div style="padding:20px 16px 10px;">
+      <div style="font-size:15px;font-weight:800;color:${CW};">La Clínica</div>
+      <div style="font-size:10px;color:rgba(255,255,255,0.45);letter-spacing:0.3px;">Gestión de Ruta</div>
+    </div>
+    <div style="height:1px;background:rgba(255,255,255,0.1);margin:0 12px 8px;"></div>
+    <div style="padding:0 8px;">
+      ${sl("ruta","🗺️","Mi Ruta")}
+      ${sl("catalogo","🧴","Catálogo")}
+      ${sl("carrito","🛒","Carrito",nCart)}
+      ${sl("cobranza","💰","Cobros")}
+    </div>
+    <div style="height:1px;background:rgba(255,255,255,0.1);margin:6px 12px;"></div>
+    <div style="padding:0 8px;flex:1;">
+      ${sl("pedidos","📦","Pedidos")}
+      ${sl("entregas","🚚","Entregas",pendEnt)}
+      ${sl("pendientes","📋","Pendientes",vencPend)}
+      ${sl("cladmin","🏪","Clientes")}
+      ${sl("prospectos","🎯","Prospectos")}
+      ${sl("devoluciones","↩️","Devoluciones")}
+      ${sl("gastos","💸","Gastos")}
+      ${sl("cartera","📊","Balance")}
+      ${sl("catalogo_admin","🧴","Cat. Admin")}
+      ${sl("ajustes","⚙️","Ajustes")}
+      ${(rol==="dueno"||rol==="admin")?sl("usuarios","👥","Usuarios"):""}
+    </div>
+    <div style="padding:8px 8px 16px;border-top:1px solid rgba(255,255,255,0.1);">
+      <button onclick="abrirCierreDia()"
+        style="width:100%;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.14);
+        border-radius:9px;padding:9px;color:${CW};font-size:12px;font-weight:600;cursor:pointer;margin-bottom:8px;">
+        📊 Cerrar Día
+      </button>
+      <div style="padding:6px 4px 8px;">
+        <div style="font-size:12px;font-weight:700;color:${CW};line-height:1.3;">${h(nombre)}</div>
+        <div style="font-size:10px;color:rgba(255,255,255,0.45);margin-top:1px;">${h(ST.user?.email||"")}</div>
+      </div>
+      <button onclick="auth.signOut()"
+        style="width:100%;background:none;border:1px solid rgba(255,255,255,0.18);
+        border-radius:9px;padding:8px;color:rgba(255,255,255,0.65);font-size:12px;cursor:pointer;">
+        🚪 Cerrar sesión
+      </button>
+    </div>
   </div>`;
 }
 
@@ -384,7 +501,7 @@ function htmlRuta(){
         + Cliente</button>
     </div>
 
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;">
+    <div style="display:grid;grid-template-columns:${isDesktop()?"repeat(4,1fr)":"1fr 1fr"};gap:8px;margin-bottom:14px;">
       <div style="background:rgba(255,255,255,0.12);border-radius:13px;padding:12px;">
         <div style="font-size:24px;font-weight:800;color:${CW};">${pedidosHoy.length}</div>
         <div style="font-size:10px;color:rgba(255,255,255,0.65);margin-top:2px;">PEDIDOS HOY</div>
@@ -2052,6 +2169,15 @@ function htmlModal(){
   if(m.tipo==="fichaCliente")   c=mFichaCliente(m.cliente);
   if(m.tipo==="despachar")      c=mDespachar(m.pedido);
   if(m.tipo==="acuerdo")        c=mAcuerdo(m.pedido);
+  if(isDesktop())
+    return`<div onclick="if(event.target===this)setState({modal:null})"
+      style="position:fixed;inset:0;background:rgba(0,0,0,0.52);z-index:500;
+      display:flex;align-items:center;justify-content:center;">
+      <div style="background:${CW};border-radius:18px;padding:28px 24px;
+        width:600px;max-width:90vw;max-height:88vh;overflow-y:auto;">
+        ${c}
+      </div>
+    </div>`;
   return`<div onclick="if(event.target===this)setState({modal:null})"
     style="position:fixed;inset:0;background:rgba(0,0,0,0.48);z-index:500;
     display:flex;align-items:flex-end;justify-content:center;">
