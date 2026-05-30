@@ -286,7 +286,7 @@ function htmlAppMobile(){
     ${navBtn("ruta","🗺️","Ruta",tab==="ruta")}
     ${navBtn("catalogo","🧴","Catálogo",tab==="catalogo")}
     ${navBtnCart(nCart,tab==="carrito")}
-    ${navBtn("cobranza","💰","Cobros",tab==="cobranza")}
+    ${navBtn("pedidos","📦","Pedidos",tab==="pedidos")}
     ${navBtn("mas","☰","Más",tab==="mas")}
   </div>
 
@@ -370,11 +370,11 @@ function htmlSidebar(tab,nCart,rol){
       ${sl("ruta","🗺️","Mi Ruta")}
       ${sl("catalogo","🧴","Catálogo")}
       ${sl("carrito","🛒","Carrito",nCart)}
-      ${sl("cobranza","💰","Cobros")}
+      ${sl("pedidos","📦","Pedidos")}
     </div>
     <div style="height:1px;background:rgba(255,255,255,0.1);margin:6px 12px;"></div>
     <div style="padding:0 8px;flex:1;">
-      ${sl("pedidos","📦","Pedidos")}
+      ${sl("cobranza","💰","Cobros")}
       ${sl("entregas","🚚","Entregas",pendEnt)}
       ${sl("pendientes","📋","Pendientes",vencPend)}
       ${sl("cladmin","🏪","Clientes")}
@@ -1372,6 +1372,7 @@ function htmlMas(){
   <div style="font-size:20px;font-weight:800;color:${CN};">${h(nombre)}</div>
   <div style="font-size:12px;color:#64748B;margin-bottom:18px;">${h(rol)} · ${h(ST.user?.email||"")}</div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:14px;">
+    ${masCard("💰","Cobros","cobranza")}
     ${masCard("📦","Pedidos","pedidos")}
     ${(()=>{var ep=ST.pedidos.filter(p=>p.entrega&&p.entrega.estado!=="entregado").length;
     return`<button onclick="setState({tab:'entregas'})"
