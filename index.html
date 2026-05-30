@@ -1377,7 +1377,7 @@ function htmlCobranza(){
 function abrirCobro(id){
   var p=ST.pedidos.find(x=>x.id===id);
   if(!p) return;
-  setState({modal:{tipo:"cobrar",pedido:p}});
+  setState({modal:{tipo:"cobrarCliente",clienteId:p.clienteId}});
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -2179,7 +2179,8 @@ function htmlModal(){
   if(!m) return"";
   var c="";
   if(m.tipo==="tarifas")        c=mTarifas(m.prod);
-  if(m.tipo==="cobrar")         c=mCobrar(m.pedido);
+  if(m.tipo==="cobrar")         c=mCobrarCliente(m.pedido?.clienteId||"");
+  if(m.tipo==="cobrarCliente")  c=mCobrarCliente(m.clienteId);
   if(m.tipo==="nuevoCliente")   c=mNuevoCliente();
   if(m.tipo==="editarCliente")  c=mEditarCliente(m.cliente);
   if(m.tipo==="guardarPedido")  c=mGuardarPedido();
@@ -2375,6 +2376,171 @@ async function procesarCobro(id){
       }
     }
     toast(estadoCobro==="cobrado"?"✓ Cobro completo":"✓ Abono. Saldo: "+fmtM(nuevo),CG);
+    setState({modal:null});
+  }catch(e){toast("Error: "+e.message,CR);}
+}
+
+// modal: cobrar cliente (multi-factura) ───────────────────────────
+function mCobrarCliente(cId){
+  var cli=ST.clientes.find(x=>x.id===cId)||{};
+  var pendientes=ST.pedidos.filter(p=>p.clienteId===cId&&(p.saldoPendiente||0)>0.01)
+    .sort((a,b)=>(b.fecha||"").localeCompare(a.fecha||""));
+  if(!pendientes.length) return`${mHeader("💵 Cobrar")}
+    <div style="text-align:center;padding:24px;color:#94A3B8;">Sin deudas pendientes para ${h(cli.nombre||"este cliente")}</div>`;
+  var totalPend=pendientes.reduce((s,p)=>s+(p.saldoPendiente||0),0);
+  return`${mHeader("💵 Cobrar")}
+  <div style="background:#F8FAFC;border-radius:10px;padding:11px;margin-bottom:12px;">
+    <div style="font-size:15px;font-weight:800;color:${CN};">${h(cli.nombre||"")}</div>
+    ${cli.encargado?`<div style="font-size:12px;color:#64748B;">${h(cli.encargado)}${cli.cedula?" · CI: "+h(cli.cedula):""}</div>`:""}
+    <div style="font-size:13px;font-weight:700;color:${CR};margin-top:4px;">Total deuda: ${fmtM(totalPend)}</div>
+  </div>
+  <div id="cb6_facturas" style="margin-bottom:12px;">
+    ${pendientes.map(p=>`<label style="display:flex;align-items:center;gap:10px;
+      padding:10px 12px;background:${CW};border-radius:11px;margin-bottom:7px;
+      border:2px solid #E2E8F0;cursor:pointer;">
+      <input type="checkbox" data-id="${p.id}" data-saldo="${(p.saldoPendiente||0).toFixed(2)}"
+        onchange="recalcularCobro6()"
+        style="width:18px;height:18px;accent-color:${CG};cursor:pointer;flex-shrink:0;"/>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:13px;font-weight:700;color:${CN};">
+          ${p.factura?"Factura "+h(p.factura):fmtNota(p.numeroNota)}</div>
+        <div style="font-size:11px;color:#64748B;">${h(p.fecha||"")} · ${h(p.sistema||"")}</div>
+      </div>
+      <div style="font-size:14px;font-weight:800;color:${CR};flex-shrink:0;">${fmtM(p.saldoPendiente)}</div>
+    </label>`).join("")}
+  </div>
+  <div style="background:#F0FDF4;border-radius:11px;padding:11px 14px;margin-bottom:14px;
+    display:flex;justify-content:space-between;align-items:center;">
+    <span style="font-size:12px;font-weight:700;color:#64748B;text-transform:uppercase;">Total seleccionado</span>
+    <span id="cb6_total" style="font-size:22px;font-weight:800;color:${CG};">$0.00</span>
+  </div>
+  <input type="hidden" id="cb6_modo_hid" value="cobrar"/>
+  <div id="cb6_modo_abonar" style="display:none;margin-bottom:12px;">
+    <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:6px;">Monto a abonar</label>
+    <input id="cb6_monto" type="number" step="0.01" placeholder="0.00"
+      style="width:100%;border:2px solid ${CB};border-radius:11px;padding:13px;
+      font-size:22px;font-weight:800;outline:none;"/>
+  </div>
+  <div id="cb6_modo_acuerdo" style="display:none;margin-bottom:12px;">
+    <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:6px;">¿Para cuándo promete pagar?</label>
+    <input id="cb6_fecha" type="date"
+      style="width:100%;border:2px solid ${CA};border-radius:11px;padding:12px;font-size:15px;outline:none;margin-bottom:8px;"/>
+    <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Nota (opcional)</label>
+    <input id="cb6_nota" type="text" placeholder="Ej: pagará el lunes con transferencia"
+      style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:14px;outline:none;"/>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px;margin-bottom:8px;">
+    <button onclick="procesarCobrarSel('${cId}')"
+      style="padding:12px 4px;border-radius:11px;border:2px solid ${CG};
+      background:#F0FDF4;color:${CG};font-weight:700;font-size:13px;cursor:pointer;">✓ COBRAR</button>
+    <button onclick="setCb6Modo('abonar')"
+      style="padding:12px 4px;border-radius:11px;border:2px solid ${CB};
+      background:#EFF6FF;color:${CB};font-weight:700;font-size:13px;cursor:pointer;">± ABONAR</button>
+    <button onclick="setCb6Modo('acuerdo')"
+      style="padding:12px 4px;border-radius:11px;border:1px solid ${CA};
+      background:#FFFBEB;color:${CA};font-weight:700;font-size:13px;cursor:pointer;">🤝 ACUERDO</button>
+  </div>
+  <div id="cb6_btn_confirmar" style="display:none;">
+    <button onclick="confirmarCb6('${cId}')"
+      style="width:100%;background:${CG};border:none;border-radius:13px;padding:13px;
+      color:${CW};font-size:15px;font-weight:700;cursor:pointer;">✓ Confirmar</button>
+  </div>`;
+}
+function setCb6Modo(modo){
+  var divAbon=$("cb6_modo_abonar"),divAcu=$("cb6_modo_acuerdo"),btnConf=$("cb6_btn_confirmar");
+  if(divAbon) divAbon.style.display=modo==="abonar"?"block":"none";
+  if(divAcu)  divAcu.style.display=modo==="acuerdo"?"block":"none";
+  if(btnConf) btnConf.style.display="block";
+  var hid=$("cb6_modo_hid");if(hid)hid.value=modo;
+}
+function recalcularCobro6(){
+  var total=0;
+  document.querySelectorAll("#cb6_facturas input[type=checkbox]:checked")
+    .forEach(c=>total+=parseFloat(c.dataset.saldo||0));
+  var el=$("cb6_total");if(el) el.textContent="$"+total.toFixed(2);
+}
+function confirmarCb6(cId){
+  var modo=$("cb6_modo_hid")?.value||"cobrar";
+  if(modo==="abonar") procesarAbonar6(cId);
+  else if(modo==="acuerdo") procesarAcuerdo6(cId);
+}
+async function procesarCobrarSel(cId){
+  var checks=[...document.querySelectorAll("#cb6_facturas input[type=checkbox]:checked")];
+  if(!checks.length){toast("Seleccioná al menos una factura",CA);return;}
+  var totalCobrado=0;
+  var updates=checks.map(c=>({id:c.dataset.id,saldo:parseFloat(c.dataset.saldo||0)}));
+  updates.forEach(u=>totalCobrado+=u.saldo);
+  try{
+    for(var u of updates){
+      var p=ST.pedidos.find(x=>x.id===u.id);
+      await db.collection("pedidos").doc(u.id).update({
+        saldoPendiente:0,estadoCobro:"cobrado",fechaCobro:fmtF(),
+        montoCobrado:(p?.montoCobrado||0)+u.saldo,
+        ts:firebase.firestore.FieldValue.serverTimestamp()
+      });
+      var idx=ST.pedidos.findIndex(x=>x.id===u.id);
+      if(idx>=0){ST.pedidos[idx].saldoPendiente=0;ST.pedidos[idx].estadoCobro="cobrado";
+        ST.pedidos[idx].montoCobrado=(ST.pedidos[idx].montoCobrado||0)+u.saldo;}
+    }
+    var cIdx=ST.clientes.findIndex(x=>x.id===cId);
+    if(cIdx>=0){
+      var nPend=Math.max(0,(ST.clientes[cIdx].pendiente||0)-totalCobrado);
+      await db.collection("clientes").doc(cId).update({pendiente:nPend});
+      ST.clientes[cIdx].pendiente=nPend;
+      if(ST.clienteActivo?.id===cId) ST.clienteActivo.pendiente=nPend;
+    }
+    toast("✓ "+updates.length+" factura"+(updates.length!==1?"s":"")+" cobrada"+(updates.length!==1?"s":"")+": "+fmtM(totalCobrado),CG);
+    setState({modal:null});
+  }catch(e){toast("Error: "+e.message,CR);}
+}
+async function procesarAbonar6(cId){
+  var monto=parseFloat(val("cb6_monto")||0);
+  if(!monto||monto<=0){toast("Ingresá un monto válido",CR);return;}
+  var pedsPend=ST.pedidos.filter(p=>p.clienteId===cId&&(p.saldoPendiente||0)>0.01)
+    .sort((a,b)=>(a.fecha||"").localeCompare(b.fecha||""));
+  var restante=monto;
+  try{
+    for(var p of pedsPend){
+      if(restante<=0.01) break;
+      var pago=Math.min(restante,p.saldoPendiente||0);
+      var nuevoSaldo=Math.max(0,(p.saldoPendiente||0)-pago);
+      var eC=nuevoSaldo<0.01?"cobrado":"parcial";
+      await db.collection("pedidos").doc(p.id).update({
+        saldoPendiente:nuevoSaldo,estadoCobro:eC,fechaCobro:fmtF(),
+        montoCobrado:(p.montoCobrado||0)+pago,
+        ts:firebase.firestore.FieldValue.serverTimestamp()
+      });
+      var idx=ST.pedidos.findIndex(x=>x.id===p.id);
+      if(idx>=0){ST.pedidos[idx].saldoPendiente=nuevoSaldo;ST.pedidos[idx].estadoCobro=eC;}
+      restante-=pago;
+    }
+    var cIdx=ST.clientes.findIndex(x=>x.id===cId);
+    if(cIdx>=0){
+      var nPend=Math.max(0,(ST.clientes[cIdx].pendiente||0)-monto);
+      await db.collection("clientes").doc(cId).update({pendiente:nPend});
+      ST.clientes[cIdx].pendiente=nPend;
+      if(ST.clienteActivo?.id===cId) ST.clienteActivo.pendiente=nPend;
+    }
+    toast("✓ Abono de "+fmtM(monto)+" registrado. Saldo restante: "+fmtM(Math.max(0,(ST.clientes.find(x=>x.id===cId)?.pendiente||0))),CG);
+    setState({modal:null});
+  }catch(e){toast("Error: "+e.message,CR);}
+}
+async function procesarAcuerdo6(cId){
+  var fechaRaw=$("cb6_fecha")?.value;
+  if(!fechaRaw){toast("Seleccioná una fecha",CR);return;}
+  var nota=val("cb6_nota")||"";
+  var pts=fechaRaw.split("-");
+  var fechaFmt=pts[2]+"/"+pts[1]+"/"+pts[0];
+  var cli=ST.clientes.find(x=>x.id===cId)||{};
+  var totalPend=ST.pedidos.filter(p=>p.clienteId===cId&&(p.saldoPendiente||0)>0.01)
+    .reduce((s,p)=>s+(p.saldoPendiente||0),0);
+  var pData={tipo:"cobro",descripcion:"Acuerdo de pago — "+cli.nombre,
+    clienteId:cId,fecha:fechaFmt,nota,completado:false,montoPendiente:totalPend,
+    vendedor:ST.perfil?.nombre||"",ts:firebase.firestore.FieldValue.serverTimestamp()};
+  try{
+    var ref=await db.collection("pendientes").add(pData);
+    ST.pendientes.unshift({id:ref.id,...pData});
+    toast("✓ Acuerdo agendado para "+fechaFmt,CG);
     setState({modal:null});
   }catch(e){toast("Error: "+e.message,CR);}
 }
@@ -3304,9 +3470,8 @@ function htmlCartera(){
   </div></div>`;
 }
 function abrirCobroCliente(cId){
-  var pedidos=ST.pedidos.filter(p=>p.clienteId===cId&&(p.saldoPendiente||0)>0.01);
-  if(!pedidos.length){toast("Sin pedidos pendientes",CA);return;}
-  abrirCobro(pedidos[0].id);
+  if(!cId){toast("Cliente no identificado",CR);return;}
+  setState({modal:{tipo:"cobrarCliente",clienteId:cId}});
 }
 
 // ── NOTA DE VENTA ─────────────────────────────────────────────────
