@@ -790,9 +790,24 @@ function debCobro(v){
   _cobroTimer=setTimeout(()=>{
     var q=v.toLowerCase();
     var hoy=new Date();hoy.setHours(0,0,0,0);
+    var diasSem=["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"];
+    var hoyDia=diasSem[new Date().getDay()];
+    var filtro=ST.filtroCobro||"todos";
+    var orden=ST.ordenCobro||"monto";
     var pend=ST.pedidos.filter(p=>(p.estadoCobro!=="cobrado")&&(p.saldoPendiente||0)>0);
+    if(filtro==="pendientes") pend=pend.filter(p=>!p.acuerdoPago);
+    else if(filtro==="vencidos") pend=pend.filter(p=>{
+      if(!p.fecha)return false;
+      var dd=diasDesde(p.fecha);return dd!==null&&dd>15;
+    });
+    else if(filtro==="hoy") pend=pend.filter(p=>{
+      var c=ST.clientes.find(x=>x.id===p.clienteId);
+      return c&&c.diaCobro===hoyDia;
+    });
     if(q) pend=pend.filter(p=>(p.cliente||"").toLowerCase().includes(q));
-    pend=pend.sort((a,b)=>(a.cliente||"").localeCompare(b.cliente||""));
+    if(orden==="monto") pend=pend.sort((a,b)=>(b.saldoPendiente||0)-(a.saldoPendiente||0));
+    else if(orden==="dias") pend=pend.sort((a,b)=>(diasDesde(a.fecha)||0)<(diasDesde(b.fecha)||0)?1:-1);
+    else pend=pend.sort((a,b)=>(a.cliente||"").localeCompare(b.cliente||""));
     var el=$("cobro_list");
     if(el) el.innerHTML=buildCobroCards(pend,hoy);
   },250);
@@ -965,15 +980,15 @@ function htmlCarrito(){
     box-shadow:0 1px 4px rgba(0,0,0,0.07);">
     <div style="display:flex;justify-content:space-between;margin-bottom:7px;">
       <span style="color:#64748B;font-size:13px;">Subtotal sin IVA</span>
-      <span style="font-weight:700;font-size:14px;">${fmtM(sinIVA)}</span>
+      <span id="cart_siniva" style="font-weight:700;font-size:14px;">${fmtM(sinIVA)}</span>
     </div>
     <div style="display:flex;justify-content:space-between;padding-bottom:10px;border-bottom:2px solid #F1F5F9;">
       <span style="color:#64748B;font-size:13px;">IVA 15% (incluido)</span>
-      <span style="font-weight:700;font-size:14px;">${fmtM(iva)}</span>
+      <span id="cart_iva" style="font-weight:700;font-size:14px;">${fmtM(iva)}</span>
     </div>
     <div style="display:flex;justify-content:space-between;padding-top:10px;">
       <span style="font-size:16px;font-weight:800;color:${CN};">TOTAL</span>
-      <span style="font-size:21px;font-weight:800;color:${CG};">${fmtM(total)}</span>
+      <span id="cart_total" style="font-size:21px;font-weight:800;color:${CG};">${fmtM(total)}</span>
     </div>
   </div>
 
@@ -1028,8 +1043,12 @@ function editarPrecioCart(itemId){
   if(lbl){lbl.textContent=fmtM(nuevoPrecio)+" c/u";lbl.style.display="";}
   if(edit) edit.style.display="none";
   if(subt) subt.textContent=fmtM(ST.carrito[idx].subtotal);
-  // Update totals by re-rendering just the summary section
-  var total=ST.carrito.reduce((s,i)=>s+i.subtotal,0);
+  var newTotal=ST.carrito.reduce((s,i)=>s+i.subtotal,0);
+  var newSinIVA=newTotal/1.15;
+  var elTotal=$("cart_total"),elSinIVA=$("cart_siniva"),elIVA=$("cart_iva");
+  if(elTotal) elTotal.textContent=fmtM(newTotal);
+  if(elSinIVA) elSinIVA.textContent=fmtM(newSinIVA);
+  if(elIVA) elIVA.textContent=fmtM(newTotal-newSinIVA);
   toast("✓ Precio actualizado",CG,1500);
 }
 
@@ -3927,7 +3946,7 @@ function mCierreDia(){
   var ventasHoy=pedidosHoy.reduce((s,p)=>s+(p.montoConIVA||p.monto||0),0);
   var cobradoHoy=ST.pedidos.filter(p=>p.fechaCobro===hoyStr).reduce((s,p)=>s+(p.montoCobrado||0),0);
   var gastosHoy=ST.gastos.filter(g=>g.fecha===hoyStr).reduce((s,g)=>s+(g.monto||0),0);
-  var utilidad=ventasHoy+cobradoHoy-gastosHoy;
+  var utilidad=ventasHoy-gastosHoy;
   var clientesUnicos=new Set(pedidosHoy.map(p=>p.clienteId).filter(Boolean)).size;
   var filas=[
     ["🏪 Clientes visitados",String(clientesUnicos)],
@@ -3964,7 +3983,7 @@ function compartirCierreDiaWA(){
   var ventasHoy=pedidosHoy.reduce((s,p)=>s+(p.montoConIVA||p.monto||0),0);
   var cobradoHoy=ST.pedidos.filter(p=>p.fechaCobro===hoyStr).reduce((s,p)=>s+(p.montoCobrado||0),0);
   var gastosHoy=ST.gastos.filter(g=>g.fecha===hoyStr).reduce((s,g)=>s+(g.monto||0),0);
-  var utilidad=ventasHoy+cobradoHoy-gastosHoy;
+  var utilidad=ventasHoy-gastosHoy;
   var clientesUnicos=new Set(pedidosHoy.map(p=>p.clienteId).filter(Boolean)).size;
   var nombre=getNombre();
   var msg="REPORTE DEL DÍA — "+hoyStr+"\nVendedor: "+nombre+
