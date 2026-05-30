@@ -1216,8 +1216,10 @@ function setEntregaResp(r){
 async function guardarPedido(){
   if(ST._saving) return;
   ST._saving=true;
-  var forma=val("gp_forma")||"Contado";
-  var contactoFacturacion=val("gp_contacto")||"";
+  var tipoFac=val("gp_tipo_fac")||"consumidorFinal";
+  var nombreFac=tipoFac==="conFactura"?(val("gp_nombre_fac")||ST.clienteActivo?.nombre||""):"Consumidor Final";
+  var cedulaFac=tipoFac==="conFactura"?(val("gp_cedula_fac")||""):"";
+  var rucFac=tipoFac==="conFactura"?(val("gp_ruc_fac")||""):"";
   var yaPago=(val("gp_ya_pago")||"no")==="si";
   var notas=val("gp_notas")||"";
   var resp=val("gp_resp")||"vendedor";
@@ -1229,15 +1231,21 @@ async function guardarPedido(){
   var entregaObj={estado:"pendiente",responsable:resp,fechaEntrega:null,notas:""};
   var estadoCobro=yaPago?"cobrado":"pendiente";
   var saldoPendiente=yaPago?0:total;
+  var formaPago=yaPago?"Contado":"Crédito";
+  var contactoFacturacion=tipoFac==="conFactura"?nombreFac:"";
   try{
     var ref=await db.collection("pedidos").add({
       cliente:ST.clienteActivo.nombre,
       clienteId:ST.clienteActivo.id,
       vendedor:vendedorNombre,
       productos:prodsCopy,
-      monto:sub, montoConIVA:total,
+      monto:sub,montoConIVA:total,
       sistema:ST.sistemaCarrito,
-      formaPago:forma,
+      formaPago,
+      tipoFacturacion:tipoFac,
+      nombreFacturacion:nombreFac,
+      cedulaFacturacion:cedulaFac,
+      rucFacturacion:rucFac,
       contactoFacturacion,notas,
       estado:"tomado",
       estadoCobro,
@@ -1252,7 +1260,8 @@ async function guardarPedido(){
     ST.pedidos.unshift({id:ref.id,clienteId:ST.clienteActivo.id,cliente:ST.clienteActivo.nombre,
       monto:sub,montoConIVA:total,sistema:ST.sistemaCarrito,estado:"tomado",
       estadoCobro,saldoPendiente,montoCobrado:yaPago?total:0,fecha:fmtF(),contactoFacturacion,
-      numeroNota:nNota,vendedor:vendedorNombre,productos:prodsCopy,entrega:entregaObj});
+      numeroNota:nNota,vendedor:vendedorNombre,productos:prodsCopy,entrega:entregaObj,
+      tipoFacturacion:tipoFac,nombreFacturacion:nombreFac,cedulaFacturacion:cedulaFac});
     if(!yaPago&&ST.clienteActivo.id){
       var nSaldo=(parseFloat(ST.clienteActivo.pendiente)||0)+total;
       try{
@@ -2362,6 +2371,21 @@ async function procesarCobro(id){
 }
 
 // modal: guardar pedido ───────────────────────────────────────────
+function setTipoFac(tipo){
+  var hid=$("gp_tipo_fac");if(hid)hid.value=tipo;
+  var campos=$("gp_fac_campos");
+  var btnCF=$("tf_cf"),btnFA=$("tf_fa");
+  if(campos) campos.style.display=tipo==="conFactura"?"block":"none";
+  if(btnCF&&btnFA){
+    if(tipo==="conFactura"){
+      btnFA.style.cssText="flex:1;padding:11px;border-radius:10px;border:2px solid "+CN+";background:"+CN+";color:"+CW+";font-weight:700;font-size:13px;cursor:pointer;";
+      btnCF.style.cssText="flex:1;padding:11px;border-radius:10px;border:2px solid #E2E8F0;background:"+CW+";color:#64748B;font-weight:700;font-size:13px;cursor:pointer;";
+    } else {
+      btnCF.style.cssText="flex:1;padding:11px;border-radius:10px;border:2px solid "+CN+";background:"+CN+";color:"+CW+";font-weight:700;font-size:13px;cursor:pointer;";
+      btnFA.style.cssText="flex:1;padding:11px;border-radius:10px;border:2px solid #E2E8F0;background:"+CW+";color:#64748B;font-weight:700;font-size:13px;cursor:pointer;";
+    }
+  }
+}
 function setYaPago(v){
   var hid=$("gp_ya_pago");if(hid)hid.value=v;
   var si=$("gp_yp_si"),no=$("gp_yp_no");
@@ -2377,22 +2401,36 @@ function setYaPago(v){
 }
 function mGuardarPedido(){
   var total=ST.carrito.reduce((s,i)=>s+i.subtotal,0);
+  var cli=ST.clienteActivo||{};
   return`${mHeader("Confirmar Pedido")}
   <div style="background:#F8FAFC;border-radius:11px;padding:12px;margin-bottom:14px;">
     <div style="font-size:12px;color:#64748B;">Cliente</div>
-    <div style="font-size:15px;font-weight:700;color:${CN};">${h(ST.clienteActivo?.nombre||"")}</div>
+    <div style="font-size:15px;font-weight:700;color:${CN};">${h(cli.nombre||"")}</div>
     <div style="font-size:12px;color:#64748B;margin-top:6px;">${ST.carrito.length} producto${ST.carrito.length!==1?"s":""} · ${h(ST.sistemaCarrito)}</div>
     <div style="font-size:20px;font-weight:800;color:${CN};margin-top:4px;">Total: ${fmtM(total)}</div>
   </div>
-  <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:6px;">Forma de pago</label>
-  <select id="gp_forma" style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:14px;outline:none;background:${CW};margin-bottom:12px;">
-    <option value="Contado">Contado</option>
-    <option value="Credito">Crédito</option>
-  </select>
-  <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:6px;">Persona de contacto para facturación (opcional)</label>
-  <input id="gp_contacto" type="text" placeholder="Nombre del encargado de facturación"
-    style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:14px;outline:none;margin-bottom:12px;"/>
-  <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:7px;">¿El cliente ya pagó?</label>
+  <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:7px;">Tipo de facturación *</label>
+  <div style="display:flex;gap:8px;margin-bottom:4px;">
+    <button id="tf_cf" onclick="setTipoFac('consumidorFinal')"
+      style="flex:1;padding:11px;border-radius:10px;border:2px solid ${CN};background:${CN};color:${CW};font-weight:700;font-size:13px;cursor:pointer;">
+      👤 Consumidor Final</button>
+    <button id="tf_fa" onclick="setTipoFac('conFactura')"
+      style="flex:1;padding:11px;border-radius:10px;border:2px solid #E2E8F0;background:${CW};color:#64748B;font-weight:700;font-size:13px;cursor:pointer;">
+      🧾 Con Factura</button>
+  </div>
+  <input type="hidden" id="gp_tipo_fac" value="consumidorFinal"/>
+  <div id="gp_fac_campos" style="display:none;background:#F8FAFC;border-radius:11px;padding:12px;margin-top:8px;margin-bottom:4px;">
+    <label style="font-size:12px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Nombre / Razón Social</label>
+    <input id="gp_nombre_fac" type="text" value="${h(cli.nombre||"")}"
+      style="width:100%;border:2px solid #E2E8F0;border-radius:9px;padding:10px;font-size:13px;outline:none;margin-bottom:8px;"/>
+    <label style="font-size:12px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Cédula</label>
+    <input id="gp_cedula_fac" type="text" placeholder="Cédula" value="${h(cli.cedula||"")}"
+      style="width:100%;border:2px solid #E2E8F0;border-radius:9px;padding:10px;font-size:13px;outline:none;margin-bottom:8px;"/>
+    <label style="font-size:12px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">RUC (opcional)</label>
+    <input id="gp_ruc_fac" type="text" placeholder="RUC" value="${h(cli.ruc||"")}"
+      style="width:100%;border:2px solid #E2E8F0;border-radius:9px;padding:10px;font-size:13px;outline:none;"/>
+  </div>
+  <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:7px;margin-top:14px;">¿El cliente ya pagó?</label>
   <div style="display:flex;gap:8px;margin-bottom:16px;">
     <button id="gp_yp_si" onclick="setYaPago('si')"
       style="flex:1;padding:11px;border-radius:10px;border:2px solid #E2E8F0;background:${CW};color:#64748B;font-weight:700;font-size:13px;cursor:pointer;">
