@@ -1465,6 +1465,12 @@ function htmlPedidos(){
             padding:2px 8px;font-size:10px;font-weight:700;margin-top:3px;">${h(p.estado||"")}</div>
         </div>
       </div>
+      ${(p.productos&&p.productos.length)?`<div style="background:#F8FAFC;border-radius:8px;padding:7px 10px;margin-bottom:8px;">
+        ${p.productos.map(x=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:2px 0;">
+          <span style="font-size:11px;color:#475569;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${h(x.nombre||x.codigo||"")}</span>
+          <span style="font-size:11px;color:#64748B;white-space:nowrap;margin-left:8px;">${x.cantidad} × ${fmtM(x.precioUnitario||0)}</span>
+        </div>`).join("")}
+      </div>`:""}
       <div style="display:flex;gap:6px;flex-wrap:wrap;">
         <button onclick="abrirNotaVenta('${p.id}')"
           style="background:#F1F5F9;border:1px solid #E2E8F0;border-radius:7px;padding:6px 11px;
@@ -1476,7 +1482,7 @@ function htmlPedidos(){
           style="background:${CO};border:none;border-radius:7px;padding:6px 12px;color:${CW};font-size:12px;font-weight:600;cursor:pointer;">📦 Despachar</button>`:""}
         ${p.estado==="despachado"?`<button onclick="confirmarEntregar('${p.id}')"
           style="background:${CG};border:none;border-radius:7px;padding:6px 12px;color:${CW};font-size:12px;font-weight:600;cursor:pointer;">✓ Entregar</button>`:""}
-        ${(p.saldoPendiente||0)>0?`<button onclick="abrirCobro('${p.id}')"
+        ${p.estado==="entregado"&&(p.saldoPendiente||0)>0?`<button onclick="abrirCobro('${p.id}')"
           style="background:${CG};border:none;border-radius:7px;padding:6px 12px;color:${CW};font-size:12px;font-weight:600;cursor:pointer;">💵 Cobrar</button>`:""}
         ${p.estado!=="cancelado"?`<button onclick="cambiarEstado('${p.id}','cancelado')"
           style="background:#FEF2F2;border:1px solid #FECACA;border-radius:7px;padding:6px 10px;
@@ -1584,7 +1590,7 @@ async function confirmarEntregar(id){
 // ── CONTROL DE ENTREGAS ───────────────────────────────────────────
 function htmlEntregas(){
   var hoyStr=fmtF();
-  var pend=ST.pedidos.filter(p=>p.entrega&&p.entrega.estado!=="entregado");
+  var pend=ST.pedidos.filter(p=>p.estado==="despachado"&&p.entrega&&p.entrega.estado!=="entregado");
   var entregadosHoy=ST.pedidos.filter(p=>p.entrega&&p.entrega.estado==="entregado"&&p.entrega.fechaEntrega===hoyStr);
   var yo=pend.filter(p=>p.entrega.responsable!=="bodega");
   var bod=pend.filter(p=>p.entrega.responsable==="bodega");
@@ -1680,7 +1686,7 @@ function entregaCard(p){
 
 async function marcarEntregado(id,fotoB64){
   var upd={"entrega.estado":"entregado","entrega.fechaEntrega":fmtF(),
-    ts:firebase.firestore.FieldValue.serverTimestamp()};
+    estado:"entregado",ts:firebase.firestore.FieldValue.serverTimestamp()};
   if(fotoB64) upd.fotoEntrega=fotoB64;
   try{
     await db.collection("pedidos").doc(id).update(upd);
@@ -1689,6 +1695,7 @@ async function marcarEntregado(id,fotoB64){
       if(!ST.pedidos[idx].entrega) ST.pedidos[idx].entrega={};
       ST.pedidos[idx].entrega.estado="entregado";
       ST.pedidos[idx].entrega.fechaEntrega=fmtF();
+      ST.pedidos[idx].estado="entregado";
       if(fotoB64) ST.pedidos[idx].fotoEntrega=fotoB64;
     }
     toast(fotoB64?"✓ Entregado con foto guardada":"✓ Marcado como entregado",CG);render();
