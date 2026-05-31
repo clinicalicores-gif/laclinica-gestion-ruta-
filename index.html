@@ -1568,9 +1568,9 @@ function htmlPedidos(){
           style="background:${CO};border:none;border-radius:7px;padding:6px 12px;color:${CW};font-size:12px;font-weight:600;cursor:pointer;">📦 Despachar</button>`:""}
         ${p.estado==="despachado"&&vista==="activos"?`<button onclick="confirmarEntregar('${p.id}')"
           style="background:${CG};border:none;border-radius:7px;padding:6px 12px;color:${CW};font-size:12px;font-weight:600;cursor:pointer;">✓ Entregar</button>`:""}
-        ${p.estado==="entregado"&&(p.saldoPendiente||0)>0?`<button onclick="abrirCobro('${p.id}')"
+        ${p.estado==="entregado"&&p.estadoCobro!=="cobrado"&&(p.saldoPendiente||0)>0?`<button onclick="abrirCobro('${p.id}')"
           style="background:${CG};border:none;border-radius:7px;padding:6px 12px;color:${CW};font-size:12px;font-weight:600;cursor:pointer;">💵 Cobrar</button>`:""}
-        ${p.estado!=="cancelado"&&vista==="activos"?`<button onclick="cambiarEstado('${p.id}','cancelado')"
+        ${p.estado!=="cancelado"&&p.estado!=="entregado"&&vista==="activos"?`<button onclick="cambiarEstado('${p.id}','cancelado')"
           style="background:#FEF2F2;border:1px solid #FECACA;border-radius:7px;padding:6px 10px;
           color:${CR};font-size:11px;font-weight:600;cursor:pointer;">✕ Cancelar</button>`:""}
       </div>
@@ -1653,8 +1653,8 @@ async function confirmarEntregar(id){
   if(!p||p.estado!=="despachado"){toast("Solo pedidos despachados pueden marcarse como entregados",CR);return;}
   if(!p.factura){toast("El pedido no tiene número de factura registrado",CR);return;}
   if(!confirm("¿Confirmar como entregado?")) return;
-  // Si ya estaba cobrado (yaPago=true en el momento del pedido), no preguntar de nuevo
-  var yaEstaCobrado=p.estadoCobro==="cobrado"||(p.saldoPendiente||0)===0;
+  // Si ya estaba cobrado (yaPago=true al crear el pedido), no preguntar de nuevo
+  var yaEstaCobrado=p.estadoCobro==="cobrado";
   var pago=!yaEstaCobrado&&confirm("¿El cliente pagó ahora?\n\nAceptar = Sí pagó\nCancelar = Queda como deuda en Cobros");
   var montoPagado=yaEstaCobrado?0:(p.saldoPendiente||0);
   try{
@@ -2476,6 +2476,7 @@ async function procesarCobro(id){
   if(!monto||monto<=0){toast("Ingresá un monto válido",CR);return;}
   var p=ST.pedidos.find(x=>x.id===id);
   if(!p) return;
+  if(p.estadoCobro==="cobrado"||(p.saldoPendiente||0)<=0.01){toast("Este pedido ya fue cobrado",CR);return;}
   var fotoFile=$("cb_foto")?.files?.[0];
   var fotoB64=null;
   if(fotoFile){try{fotoB64=await comprimirFoto(fotoFile);}catch(e){}}
@@ -2648,7 +2649,7 @@ async function procesarAbonar6(cId){
     }
     var cIdx=ST.clientes.findIndex(x=>x.id===cId);
     if(cIdx>=0){
-      var nPend=Math.max(0,(ST.clientes[cIdx].pendiente||0)-monto);
+      var nPend=ST.pedidos.filter(p=>p.clienteId===cId&&(p.saldoPendiente||0)>0.01).reduce((s,p)=>s+(p.saldoPendiente||0),0);
       await db.collection("clientes").doc(cId).update({pendiente:nPend});
       ST.clientes[cIdx].pendiente=nPend;
       if(ST.clienteActivo?.id===cId) ST.clienteActivo.pendiente=nPend;
