@@ -4502,7 +4502,26 @@ ${(cfg.categoriasGastos||CATS_GASTOS).join("\n")}</textarea>
         style="width:100%;background:#F1F5F9;border:1px solid #E2E8F0;border-radius:11px;padding:11px;
         color:#64748B;font-weight:700;cursor:pointer;font-size:13px;margin-bottom:4px;">
         📦 Backup completo (JSON)</button>
-      <div style="font-size:11px;color:#94A3B8;text-align:center;">Para restaurar datos en otro dispositivo.</div>
+      <div style="font-size:11px;color:#94A3B8;text-align:center;margin-bottom:12px;">Para restaurar datos en otro dispositivo.</div>
+      <label style="width:100%;display:block;cursor:pointer;">
+        <div style="width:100%;background:#F1F5F9;border:1px solid #E2E8F0;border-radius:11px;padding:11px;
+          color:#64748B;font-weight:700;font-size:13px;text-align:center;margin-bottom:4px;">
+          ♻️ Restaurar desde JSON</div>
+        <input type="file" accept=".json" onchange="restaurarJSON(event)" style="display:none;"/>
+      </label>
+      <div style="font-size:11px;color:#94A3B8;text-align:center;margin-bottom:8px;">Importa un backup previamente exportado.</div>
+    </div>
+
+    <div style="background:${CW};border-radius:14px;padding:16px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+      <div style="font-size:13px;font-weight:700;color:${CN};margin-bottom:8px;">📥 Importar Catálogo</div>
+      <div style="font-size:11px;color:#64748B;margin-bottom:8px;">Columnas requeridas: nombre, precioA, precioB, precioC (opcional: codigo, categoria, sistema, costo, precioD)</div>
+      <label style="width:100%;display:block;cursor:pointer;">
+        <div style="width:100%;background:${CN};border:none;border-radius:11px;padding:13px;
+          color:${CW};font-weight:700;font-size:14px;text-align:center;">
+          📂 Subir Excel o CSV</div>
+        <input type="file" accept=".xlsx,.csv" onchange="importarCatalogo(event)" style="display:none;"/>
+      </label>
+      <div id="imp_cat_res" style="margin-top:8px;font-size:12px;color:#64748B;"></div>
     </div>
 
     <div style="background:#FEF2F2;border:2px solid #FECACA;border-radius:14px;padding:16px;">
@@ -4572,6 +4591,87 @@ function guardarCatsGastos(){
 function cerrarSesionForzado(){
   if(!confirm("¿Cerrar sesión ahora?")) return;
   firebase.auth().signOut().then(()=>{window.location.reload();}).catch(e=>{toast("Error: "+e.message,CR);});
+}
+
+async function restaurarJSON(event){
+  var file=event.target.files&&event.target.files[0];
+  if(!file)return;
+  if(!confirm("¿Restaurar backup? Esto sobreescribirá datos en Firestore. Esta acción no se puede deshacer."))return;
+  try{
+    var text=await new Promise((res,rej)=>{var r=new FileReader();r.onload=e=>res(e.target.result);r.onerror=rej;r.readAsText(file);});
+    var data=JSON.parse(text);
+    var batch=db.batch();
+    var count=0;
+    var write=async(col,arr,keyFn)=>{
+      if(!Array.isArray(arr))return;
+      for(var item of arr){
+        var id=item.id||keyFn&&keyFn(item);
+        if(!id)continue;
+        var {id:_id,ts:_ts,...rest}=item;
+        batch.set(db.collection(col).doc(id),rest,{merge:true});
+        count++;
+        if(count%450===0){await batch.commit();batch=db.batch();}
+      }
+    };
+    await write("clientes",data.clientes);
+    await write("pedidos",data.pedidos);
+    await write("catalogo",data.catalogo);
+    await write("prospectos",data.prospectos);
+    await write("gastos",data.gastos);
+    await write("devoluciones",data.devoluciones);
+    await write("pendientes",data.pendientes);
+    await batch.commit();
+    toast("✓ Restaurado — "+count+" documentos. Recargando...",CG,4000);
+    setTimeout(()=>window.location.reload(),3000);
+  }catch(e){toast("Error al restaurar: "+e.message,CR,7000);}
+}
+
+async function importarCatalogo(event){
+  var file=event.target.files&&event.target.files[0];
+  if(!file)return;
+  var res=$("imp_cat_res");
+  if(res)res.innerHTML="⏳ Procesando...";
+  try{
+    if(typeof XLSX==="undefined"){toast("Librería Excel no cargada",CR);return;}
+    var ab=await new Promise((resolve,reject)=>{var r=new FileReader();r.onload=e=>resolve(e.target.result);r.onerror=reject;r.readAsArrayBuffer(file);});
+    var wb=XLSX.read(ab,{type:"arraybuffer"});
+    var ws=wb.Sheets[wb.SheetNames[0]];
+    var rows=XLSX.utils.sheet_to_json(ws,{defval:""});
+    if(!rows.length){toast("El archivo está vacío",CR);return;}
+    var ok=0,err=0;
+    var batch=db.batch();
+    var count=0;
+    for(var row of rows){
+      var nombre=(row.nombre||row.Nombre||"").toString().trim();
+      if(!nombre){err++;continue;}
+      var prod={
+        nombre,
+        codigo:(row.codigo||row.Codigo||row.Código||"").toString().trim(),
+        categoria:(row.categoria||row.Categoria||row.Categoría||"").toString().trim(),
+        sistema:(row.sistema||row.Sistema||"Perseo").toString().trim()||"Perseo",
+        precioA:parseFloat(row.precioA||row.PrecioA||row.precio_a||0)||0,
+        precioB:parseFloat(row.precioB||row.PrecioB||row.precio_b||0)||0,
+        precioC:parseFloat(row.precioC||row.PrecioC||row.precio_c||0)||0,
+        precioD:parseFloat(row.precioD||row.PrecioD||row.precio_d||0)||0,
+        costo:parseFloat(row.costo||row.Costo||0)||0,
+        disponible:"Disponible"
+      };
+      var ref=db.collection("catalogo").doc();
+      batch.set(ref,prod);
+      ok++;count++;
+      if(count%400===0){await batch.commit();batch=db.batch();}
+    }
+    await batch.commit();
+    if(res)res.innerHTML=`✅ ${ok} productos importados${err?" · ⚠️ "+err+" filas sin nombre":""}.`;
+    toast("✓ "+ok+" productos importados al catálogo",CG,5000);
+    var snap=await db.collection("catalogo").get();
+    ST.catalogo=snap.docs.map(d=>({id:d.id,...d.data()}));
+    event.target.value="";
+    render();
+  }catch(e){
+    if(res)res.innerHTML="❌ Error: "+e.message;
+    toast("Error al importar: "+e.message,CR,7000);
+  }
 }
 
 function exportarJSON(){
