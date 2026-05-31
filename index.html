@@ -97,7 +97,7 @@ function toast(msg,color,dur){
   }
 }
 
-function fmtM(n){return"$"+parseFloat(n||0).toFixed(2);}
+function fmtM(n){var v=parseFloat(n||0).toFixed(2);var p=v.split(".");return"$"+p[0].replace(/\B(?=(\d{3})+(?!\d))/g,",")+"."+p[1];}
 function fmtNota(n){return"#"+String(n||0).padStart(3,"0");}
 function getNextNota(){
   var n=(parseInt(localStorage.getItem("vr_ultimo_numero_nota")||"0"))+1;
