@@ -2189,8 +2189,9 @@ function htmlModal(){
   if(m.tipo==="nuevoProspecto") c=mNuevoProspecto();
   if(m.tipo==="nuevoGasto")     c=mNuevoGasto();
   if(m.tipo==="nuevaDev")       c=mNuevaDev();
-  if(m.tipo==="nuevoPendiente") c=mNuevoPendiente();
-  if(m.tipo==="verNota")        c=mVerNota(m.pedido);
+  if(m.tipo==="nuevoPendiente")      c=mNuevoPendiente();
+  if(m.tipo==="completarPendiente")  c=mCompletarPendiente(m.pend);
+  if(m.tipo==="verNota")             c=mVerNota(m.pedido);
   if(m.tipo==="nuevoClienteDesdeProspecto") c=mNuevoClienteDesdeProspecto(m.prospecto);
   if(m.tipo==="cierreDia")      c=mCierreDia();
   if(m.tipo==="fichaCliente")   c=mFichaCliente(m.cliente);
@@ -3701,15 +3702,96 @@ function htmlPendientes(){
   </div></div>`;
 }
 
-async function completarPendiente(id){
-  if(!confirm("¿Marcar como completado?")) return;
+function completarPendiente(id){
+  var pend=ST.pendientes.find(p=>p.id===id);
+  if(!pend) return;
+  setState({modal:{tipo:"completarPendiente",pend}});
+}
+function mCompletarPendiente(pend){
+  if(!pend) return`${mHeader("¿Qué pasó?")}<p style="color:#94A3B8;">Pendiente no encontrado.</p>`;
+  var cli=pend.clienteId?ST.clientes.find(x=>x.id===pend.clienteId):null;
+  return`${mHeader("¿Qué pasó?")}
+  <div style="background:#F8FAFC;border-radius:11px;padding:12px;margin-bottom:16px;">
+    <div style="font-size:14px;font-weight:700;color:${CN};">${h(pend.descripcion||"")}</div>
+    ${cli?`<div style="font-size:12px;color:#64748B;margin-top:3px;">👤 ${h(cli.nombre)}</div>`:""}
+    <div style="font-size:11px;color:#94A3B8;margin-top:3px;">${h(pend.fecha||"")}</div>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:8px;">
+    <button onclick="procesarCompletarPend('${pend.id}','exitoso')"
+      style="width:100%;padding:14px;border-radius:12px;border:2px solid ${CG};
+      background:#F0FDF4;color:${CG};font-weight:700;font-size:14px;cursor:pointer;text-align:left;">
+      ✅ Completado exitosamente</button>
+    <button onclick="mostrarFechaPend('acuerdo')"
+      style="width:100%;padding:14px;border-radius:12px;border:2px solid ${CB};
+      background:#EFF6FF;color:${CB};font-weight:700;font-size:14px;cursor:pointer;text-align:left;">
+      🔄 Nuevo acuerdo</button>
+    <button onclick="mostrarFechaPend('volver')"
+      style="width:100%;padding:14px;border-radius:12px;border:2px solid ${CA};
+      background:#FFFBEB;color:${CA};font-weight:700;font-size:14px;cursor:pointer;text-align:left;">
+      ↩️ No estaba / Volver otro día</button>
+    <button onclick="setState({modal:null})"
+      style="width:100%;padding:13px;border-radius:12px;border:2px solid #E2E8F0;
+      background:${CW};color:#64748B;font-weight:700;font-size:13px;cursor:pointer;text-align:left;">
+      ❌ Cancelar</button>
+  </div>
+  <div id="cpend_fecha_w" style="display:none;margin-top:14px;background:#F8FAFC;border-radius:12px;padding:14px;">
+    <input type="hidden" id="cpend_modo" value=""/>
+    <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:6px;">Nueva fecha</label>
+    <input id="cpend_fecha" type="date" value="${new Date().toISOString().split("T")[0]}"
+      style="width:100%;border:2px solid #E2E8F0;border-radius:9px;padding:11px;font-size:15px;outline:none;margin-bottom:10px;"/>
+    <button onclick="confirmarFechaPend('${pend.id}')"
+      style="width:100%;background:${CN};border:none;border-radius:10px;padding:12px;
+      color:${CW};font-size:14px;font-weight:700;cursor:pointer;">✓ Confirmar</button>
+  </div>`;
+}
+function mostrarFechaPend(modo){
+  var w=$("cpend_fecha_w"),hid=$("cpend_modo");
+  if(w) w.style.display="block";
+  if(hid) hid.value=modo;
+  var f=$("cpend_fecha");if(f){f.focus();}
+}
+async function procesarCompletarPend(id,resultado){
   try{
-    await db.collection("pendientes").doc(id).update({completado:true,fechaCompletado:fmtF()});
+    await db.collection("pendientes").doc(id).update({
+      completado:true,fechaCompletado:fmtF(),resultadoCompletado:resultado,
+      ts:firebase.firestore.FieldValue.serverTimestamp()
+    });
     var idx=ST.pendientes.findIndex(p=>p.id===id);
-    if(idx>=0){ST.pendientes[idx].completado=true;ST.pendientes[idx].fechaCompletado=fmtF();}
-    toast("✓ Completado",CG);render();
+    if(idx>=0){ST.pendientes[idx].completado=true;ST.pendientes[idx].fechaCompletado=fmtF();
+      ST.pendientes[idx].resultadoCompletado=resultado;}
+    toast("✅ Completado exitosamente",CG);setState({modal:null});
   }catch(e){toast("Error: "+e.message,CR);}
 }
+async function confirmarFechaPend(id){
+  var modo=$("cpend_modo")?.value||"volver";
+  var fechaRaw=$("cpend_fecha")?.value;
+  if(!fechaRaw){toast("Seleccioná una fecha",CR);return;}
+  var pts=fechaRaw.split("-");
+  var fechaFmt=pts[2]+"/"+pts[1]+"/"+pts[0];
+  var pend=ST.pendientes.find(p=>p.id===id);
+  if(!pend) return;
+  var descNueva=modo==="acuerdo"
+    ?"🔄 Nuevo acuerdo: "+pend.descripcion
+    :"↩️ Revisitar: "+pend.descripcion;
+  try{
+    await db.collection("pendientes").doc(id).update({
+      completado:true,fechaCompletado:fmtF(),
+      resultadoCompletado:modo==="acuerdo"?"nuevo_acuerdo":"volver_otro_dia",
+      ts:firebase.firestore.FieldValue.serverTimestamp()
+    });
+    var idx=ST.pendientes.findIndex(p=>p.id===id);
+    if(idx>=0){ST.pendientes[idx].completado=true;
+      ST.pendientes[idx].resultadoCompletado=modo==="acuerdo"?"nuevo_acuerdo":"volver_otro_dia";}
+    var pData={tipo:pend.tipo||"otro",descripcion:descNueva,clienteId:pend.clienteId||"",
+      fecha:fechaFmt,completado:false,vendedor:ST.perfil?.nombre||"",
+      ts:firebase.firestore.FieldValue.serverTimestamp()};
+    var ref=await db.collection("pendientes").add(pData);
+    ST.pendientes.unshift({id:ref.id,...pData});
+    toast(modo==="acuerdo"?"🔄 Nuevo acuerdo para "+fechaFmt:"↩️ Reagendado para "+fechaFmt,CG);
+    setState({modal:null});
+  }catch(e){toast("Error: "+e.message,CR);}
+}
+
 async function reactivarPendiente(id){
   if(!confirm("¿Reactivar este pendiente?")) return;
   try{
