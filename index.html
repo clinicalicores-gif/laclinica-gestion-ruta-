@@ -2674,7 +2674,8 @@ async function procesarAcuerdo6(cId){
     vendedor:ST.perfil?.nombre||"",ts:firebase.firestore.FieldValue.serverTimestamp()};
   try{
     var ref=await db.collection("pendientes").add(pData);
-    ST.pendientes.unshift({id:ref.id,...pData});
+    var {ts:_tsA,...pDataLocal}=pData;
+    ST.pendientes.unshift({id:ref.id,...pDataLocal});
     if(pedsPend.length>0){
       var batch=db.batch();
       pedsPend.forEach(ped=>{
@@ -4005,7 +4006,8 @@ async function confirmarFechaPend(id){
       fecha:fechaFmt,completado:false,vendedor:ST.perfil?.nombre||"",
       ts:firebase.firestore.FieldValue.serverTimestamp()};
     var ref=await db.collection("pendientes").add(pData);
-    ST.pendientes.unshift({id:ref.id,...pData});
+    var {ts:_tsB,...pDataLocal2}=pData;
+    ST.pendientes.unshift({id:ref.id,...pDataLocal2});
     toast(modo==="acuerdo"?"🔄 Nuevo acuerdo para "+fechaFmt:"↩️ Reagendado para "+fechaFmt,CG);
     setState({modal:null});
   }catch(e){toast("Error: "+e.message,CR);}
@@ -4093,7 +4095,8 @@ async function guardarPendiente(){
   if(montoPendiente&&montoPendiente>0) data.montoPendiente=montoPendiente;
   try{
     var ref=await db.collection("pendientes").add(data);
-    ST.pendientes.unshift({id:ref.id,...data});
+    var {ts:_tsC,...dataLocal}=data;
+    ST.pendientes.unshift({id:ref.id,...dataLocal});
     toast("✓ Pendiente guardado",CG);setState({modal:null});
   }catch(e){toast("Error: "+e.message,CR);}
 }
