@@ -2945,6 +2945,7 @@ async function actualizarCliente(id){
 
 // modal: producto ─────────────────────────────────────────────────
 var CATS=["Licores","Bebidas","Cerveza","Confitería","Snack","Helados","Coctelería","General","Otro"];
+var CATS_GASTOS=["Combustible","Alimentación","Peaje","Estacionamiento","Comunicación","Mantenimiento","Otro"];
 
 function camposProd(pre){
   return`
@@ -3222,7 +3223,7 @@ function mNuevoGasto(){
   <div style="margin-bottom:12px;">
     <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Tipo</label>
     <select id="ga_tipo" style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:14px;outline:none;background:${CW};">
-      ${["Combustible","Alimentación","Peaje","Estacionamiento","Comunicación","Otro"].map(t=>`<option>${t}</option>`).join("")}
+      ${CATS_GASTOS.map(t=>`<option>${t}</option>`).join("")}
     </select>
   </div>
   <div style="margin-bottom:12px;">
@@ -4479,6 +4480,17 @@ ${(cfg.categoriasPersonalizadas||CATS).join("\n")}</textarea>
     </div>
 
     <div style="background:${CW};border-radius:14px;padding:16px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+      <div style="font-size:13px;font-weight:700;color:${CN};margin-bottom:8px;">💸 Categorías de gastos</div>
+      <div style="font-size:11px;color:#64748B;margin-bottom:8px;">Una categoría por línea:</div>
+      <textarea id="cfg_cats_gastos" rows="4" placeholder="Combustible\nAlimentación..."
+        style="width:100%;border:2px solid #E2E8F0;border-radius:10px;padding:10px;font-size:13px;outline:none;resize:none;font-family:monospace;">
+${(cfg.categoriasGastos||CATS_GASTOS).join("\n")}</textarea>
+      <button onclick="guardarCatsGastos()"
+        style="width:100%;background:${CN};border:none;border-radius:10px;padding:11px;margin-top:8px;
+        color:${CW};font-weight:700;cursor:pointer;font-size:13px;">✓ Guardar categorías de gastos</button>
+    </div>
+
+    <div style="background:${CW};border-radius:14px;padding:16px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
       <div style="font-size:13px;font-weight:700;color:${CN};margin-bottom:12px;">📊 Exportar Datos</div>
       <button onclick="exportarExcel()"
         style="width:100%;background:#16A34A;border:none;border-radius:11px;padding:13px;
@@ -4548,6 +4560,14 @@ function guardarCats(){
   saveConfig({categoriasPersonalizadas:cats});
   CATS=cats;
   toast("✓ Categorías guardadas",CG);render();
+}
+function guardarCatsGastos(){
+  var raw=($("cfg_cats_gastos")?.value||"").trim();
+  if(!raw){toast("Ingresá al menos una categoría",CR);return;}
+  var cats=raw.split("\n").map(c=>c.trim()).filter(c=>c.length>0);
+  saveConfig({categoriasGastos:cats});
+  CATS_GASTOS=cats;
+  toast("✓ Categorías de gastos guardadas",CG);render();
 }
 function cerrarSesionForzado(){
   if(!confirm("¿Cerrar sesión ahora?")) return;
@@ -4807,6 +4827,7 @@ auth.onAuthStateChanged(async function(user){
     var cfgInit=getConfig();
     if(cfgInit.zonasPersonalizadas&&cfgInit.zonasPersonalizadas.length) ZONAS=cfgInit.zonasPersonalizadas;
     if(cfgInit.categoriasPersonalizadas&&cfgInit.categoriasPersonalizadas.length) CATS=cfgInit.categoriasPersonalizadas;
+    if(cfgInit.categoriasGastos&&cfgInit.categoriasGastos.length) CATS_GASTOS=cfgInit.categoriasGastos;
     ST.loading=false;
     render();
   } else {
