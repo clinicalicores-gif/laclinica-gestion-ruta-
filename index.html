@@ -1329,7 +1329,7 @@ function htmlCobranza(){
   // Historial data
   var cobHist=ST.pedidos.filter(p=>p.estadoCobro==="cobrado"||(p.montoCobrado||0)>0);
   if(q) cobHist=cobHist.filter(p=>(p.cliente||"").toLowerCase().includes(q.toLowerCase()));
-  cobHist.sort((a,b)=>(b.fechaCobro||b.fecha||"").localeCompare(a.fechaCobro||a.fecha||""));
+  cobHist.sort((a,b)=>{var sk=s=>{var p=(s||"").split("/");return p.length===3?p[2]+p[1]+p[0]:s||""};return sk(b.fechaCobro||b.fecha).localeCompare(sk(a.fechaCobro||a.fecha));});
   var totalHist=cobHist.reduce((s,p)=>s+(p.montoCobrado||0),0);
 
   var chips=[["todos","Todos"],["pendientes","Sin acuerdo"],["vencidos","Vencidos +15d"],["hoy","Cobros hoy"]];
@@ -1580,17 +1580,29 @@ function htmlPedidos(){
 }
 
 async function cambiarEstado(id,estado){
+  if(estado==="despachado"||estado==="entregado"){toast("Usá el flujo correspondiente",CR);return;}
+  var p=ST.pedidos.find(x=>x.id===id);
+  if(!p) return;
+  if(estado==="cancelado"&&p.estado==="entregado"){toast("No se puede cancelar un pedido ya entregado",CR);return;}
   var conf={
     facturado:"¿Confirmar como facturado?",
-    despachado:"¿Confirmar como despachado?",
-    entregado:"¿Confirmar como entregado?",
     cancelado:"⚠️ ¿Cancelar este pedido?\n\nEl registro quedará guardado permanentemente."
   };
   if(!confirm(conf[estado]||"¿Cambiar estado?")) return;
   try{
     await db.collection("pedidos").doc(id).update({estado,ts:firebase.firestore.FieldValue.serverTimestamp()});
-    var idx=ST.pedidos.findIndex(p=>p.id===id);
+    var idx=ST.pedidos.findIndex(x=>x.id===id);
     if(idx>=0) ST.pedidos[idx].estado=estado;
+    if(estado==="cancelado"&&p.clienteId&&p.estadoCobro!=="cobrado"&&(p.saldoPendiente||0)>0){
+      var cIdx=ST.clientes.findIndex(c=>c.id===p.clienteId);
+      if(cIdx>=0){
+        var nSaldo=Math.max(0,(ST.clientes[cIdx].pendiente||0)-(p.saldoPendiente||0));
+        try{await db.collection("clientes").doc(p.clienteId).update({pendiente:nSaldo});
+          ST.clientes[cIdx].pendiente=nSaldo;
+          if(ST.clienteActivo?.id===p.clienteId) ST.clienteActivo.pendiente=nSaldo;
+        }catch(e){}
+      }
+    }
     toast(estado==="cancelado"?"Pedido cancelado — registro guardado":"Estado: "+estado,estado==="cancelado"?CA:CG);render();
   }catch(e){toast("Error: "+e.message,CR);}
 }
@@ -1641,27 +1653,33 @@ async function confirmarEntregar(id){
   if(!p||p.estado!=="despachado"){toast("Solo pedidos despachados pueden marcarse como entregados",CR);return;}
   if(!p.factura){toast("El pedido no tiene número de factura registrado",CR);return;}
   if(!confirm("¿Confirmar como entregado?")) return;
-  var pago=confirm("¿El cliente pagó ahora?\n\nAceptar = Sí pagó\nCancelar = Queda como deuda en Cobros");
+  // Si ya estaba cobrado (yaPago=true en el momento del pedido), no preguntar de nuevo
+  var yaEstaCobrado=p.estadoCobro==="cobrado"||(p.saldoPendiente||0)===0;
+  var pago=!yaEstaCobrado&&confirm("¿El cliente pagó ahora?\n\nAceptar = Sí pagó\nCancelar = Queda como deuda en Cobros");
+  var montoPagado=yaEstaCobrado?0:(p.saldoPendiente||0);
   try{
-    var montoPagado=p?(p.saldoPendiente||p.montoConIVA||p.monto||0):0;
-    var upd={estado:"entregado",ts:firebase.firestore.FieldValue.serverTimestamp()};
+    var upd={estado:"entregado","entrega.estado":"entregado","entrega.fechaEntrega":fmtF(),
+      ts:firebase.firestore.FieldValue.serverTimestamp()};
     if(pago){
       upd.estadoCobro="cobrado";
       upd.saldoPendiente=0;
       upd.fechaCobro=fmtF();
-      upd.montoCobrado=(p?.montoCobrado||0)+montoPagado;
+      upd.montoCobrado=(p.montoCobrado||0)+montoPagado;
     }
     await db.collection("pedidos").doc(id).update(upd);
     var idx=ST.pedidos.findIndex(x=>x.id===id);
     if(idx>=0){
       ST.pedidos[idx].estado="entregado";
+      if(!ST.pedidos[idx].entrega) ST.pedidos[idx].entrega={};
+      ST.pedidos[idx].entrega.estado="entregado";
+      ST.pedidos[idx].entrega.fechaEntrega=fmtF();
       if(pago){
         ST.pedidos[idx].estadoCobro="cobrado";
         ST.pedidos[idx].saldoPendiente=0;
         ST.pedidos[idx].montoCobrado=(ST.pedidos[idx].montoCobrado||0)+montoPagado;
       }
     }
-    if(pago&&p&&p.clienteId){
+    if(pago&&montoPagado>0&&p.clienteId){
       var cIdx=ST.clientes.findIndex(c=>c.id===p.clienteId);
       if(cIdx>=0){
         var nSaldo=Math.max(0,(ST.clientes[cIdx].pendiente||0)-montoPagado);
@@ -1671,7 +1689,7 @@ async function confirmarEntregar(id){
         }catch(e){}
       }
     }
-    toast(pago?"✓ Entregado y cobrado":"✓ Entregado — queda en Cobros",CG);render();
+    toast(pago?"✓ Entregado y cobrado":yaEstaCobrado?"✓ Entregado":"✓ Entregado — queda en Cobros",CG);render();
   }catch(e){toast("Error: "+e.message,CR);}
 }
 
@@ -1840,7 +1858,7 @@ function compartirListaBodega(){
   var txt="*📦 Lista de Entregas — Bodega*\n"+fmtF()+"\n\n";
   bod.forEach((p,i)=>{
     txt+=(i+1)+". *"+p.cliente+"*\n";
-    txt+="   Nota: "+fmtNota(p.numeroNota)+" · "+fmtM(p.montoConIVA||p.monto)+"\n";
+    txt+="   Pedido: "+fmtNota(p.numeroNota)+" · "+fmtM(p.montoConIVA||p.monto)+"\n";
     if(p.notas) txt+="   Nota: "+p.notas+"\n";
     txt+="\n";
   });
@@ -2463,14 +2481,16 @@ async function procesarCobro(id){
   if(fotoFile){try{fotoB64=await comprimirFoto(fotoFile);}catch(e){}}
   var nuevo=Math.max(0,(p.saldoPendiente||0)-monto);
   var estadoCobro=nuevo<0.01?"cobrado":"parcial";
-  var upd={saldoPendiente:nuevo,estadoCobro,formaCobro:forma,refCobro:ref,
+  var upd={saldoPendiente:nuevo,estadoCobro,formaPago:forma,refCobro:ref,
     fechaCobro:fmtF(),montoCobrado:(p.montoCobrado||0)+monto,
     ts:firebase.firestore.FieldValue.serverTimestamp()};
   if(fotoB64) upd.fotoCobro=fotoB64;
   try{
     await db.collection("pedidos").doc(id).update(upd);
     var idx=ST.pedidos.findIndex(x=>x.id===id);
-    if(idx>=0){ST.pedidos[idx].saldoPendiente=nuevo;ST.pedidos[idx].estadoCobro=estadoCobro;}
+    if(idx>=0){ST.pedidos[idx].saldoPendiente=nuevo;ST.pedidos[idx].estadoCobro=estadoCobro;
+      ST.pedidos[idx].montoCobrado=(ST.pedidos[idx].montoCobrado||0)+monto;
+      ST.pedidos[idx].fechaCobro=fmtF();ST.pedidos[idx].formaPago=forma;}
     var cId=p.clienteId;
     if(cId){
       var cIdx=ST.clientes.findIndex(c=>c.id===cId);
@@ -2571,8 +2591,10 @@ function confirmarCb6(cId){
   var modo=$("cb6_modo_hid")?.value||"cobrar";
   if(modo==="abonar") procesarAbonar6(cId);
   else if(modo==="acuerdo") procesarAcuerdo6(cId);
+  else if(modo==="cobrar") procesarCobrarSel(cId);
 }
 async function procesarCobrarSel(cId){
+  if(!cId){toast("Error: cliente no identificado",CR);return;}
   var checks=[...document.querySelectorAll("#cb6_facturas input[type=checkbox]:checked")];
   if(!checks.length){toast("Seleccioná al menos una factura",CA);return;}
   var totalCobrado=0;
@@ -2606,6 +2628,8 @@ async function procesarAbonar6(cId){
   if(!monto||monto<=0){toast("Ingresá un monto válido",CR);return;}
   var pedsPend=ST.pedidos.filter(p=>p.clienteId===cId&&(p.saldoPendiente||0)>0.01)
     .sort((a,b)=>(a.fecha||"").localeCompare(b.fecha||""));
+  var totalPend=pedsPend.reduce((s,p)=>s+(p.saldoPendiente||0),0);
+  if(monto>totalPend+0.01){toast("El monto supera la deuda total ("+fmtM(totalPend)+")",CR);return;}
   var restante=monto;
   try{
     for(var p of pedsPend){
@@ -2640,14 +2664,20 @@ async function procesarAcuerdo6(cId){
   var pts=fechaRaw.split("-");
   var fechaFmt=pts[2]+"/"+pts[1]+"/"+pts[0];
   var cli=ST.clientes.find(x=>x.id===cId)||{};
-  var totalPend=ST.pedidos.filter(p=>p.clienteId===cId&&(p.saldoPendiente||0)>0.01)
-    .reduce((s,p)=>s+(p.saldoPendiente||0),0);
+  var pedsPend=ST.pedidos.filter(p=>p.clienteId===cId&&(p.saldoPendiente||0)>0.01);
+  var totalPend=pedsPend.reduce((s,p)=>s+(p.saldoPendiente||0),0);
+  var acuerdo={fecha:fechaFmt,nota};
   var pData={tipo:"cobro",descripcion:"Acuerdo de pago — "+cli.nombre,
     clienteId:cId,fecha:fechaFmt,nota,completado:false,montoPendiente:totalPend,
     vendedor:ST.perfil?.nombre||"",ts:firebase.firestore.FieldValue.serverTimestamp()};
   try{
     var ref=await db.collection("pendientes").add(pData);
     ST.pendientes.unshift({id:ref.id,...pData});
+    for(var ped of pedsPend){
+      await db.collection("pedidos").doc(ped.id).update({acuerdoPago:acuerdo,ts:firebase.firestore.FieldValue.serverTimestamp()});
+      var idx=ST.pedidos.findIndex(x=>x.id===ped.id);
+      if(idx>=0) ST.pedidos[idx].acuerdoPago=acuerdo;
+    }
     toast("✓ Acuerdo agendado para "+fechaFmt,CG);
     setState({modal:null});
   }catch(e){toast("Error: "+e.message,CR);}
