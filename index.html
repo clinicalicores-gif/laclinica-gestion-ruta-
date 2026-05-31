@@ -3703,6 +3703,7 @@ function buildPendCards(q){
           <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:5px;">
             <span style="background:${tipoBg[p.tipo]||"#64748B"};color:${CW};font-size:10px;
               font-weight:700;padding:2px 8px;border-radius:20px;">${tipoLabel[p.tipo]||p.tipo||""}</span>
+            ${(()=>{var pc={alta:CR,media:CA,baja:CG};var c2=pc[p.prioridad||"media"]||CA;return`<span style="background:${c2}22;color:${c2};font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;">${({alta:"Alta",media:"Media",baja:"Baja"})[p.prioridad||"media"]}</span>`;})()}
             ${vencido?`<span style="color:${CR};font-size:10px;font-weight:800;">VENCIDO</span>`:""}
             <span style="color:#94A3B8;font-size:11px;">${h(p.fecha||"")}</span>
             ${p.montoPendiente?`<span style="color:${CR};font-size:11px;font-weight:700;">${fmtM(p.montoPendiente)}</span>`:""}
@@ -3945,6 +3946,16 @@ function mNuevoPendiente(){
     <input id="pend_fecha" type="date" value="${new Date().toISOString().split("T")[0]}"
       style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:14px;outline:none;"/>
   </div>
+  <div style="margin-bottom:12px;">
+    <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:6px;">Prioridad</label>
+    <div style="display:flex;gap:8px;">
+      ${[["alta","🔴 Alta",CR],["media","🟡 Media",CA],["baja","🟢 Baja",CG]].map(([v,l,c],i)=>`<button type="button" onclick="selPriorPend(this,'${v}')" data-prior="${v}"
+        style="flex:1;padding:8px 4px;border-radius:20px;border:2px solid ${i===1?c:"#E2E8F0"};
+        background:${i===1?c:CW};color:${i===1?CW:"#64748B"};
+        font-size:12px;font-weight:700;cursor:pointer;">${l}</button>`).join("")}
+    </div>
+    <input type="hidden" id="pend_prior" value="media"/>
+  </div>
   <div style="margin-bottom:16px;">
     <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Cliente (opcional)</label>
     <div style="position:relative;">
@@ -3974,9 +3985,17 @@ function selTipoPend(btn,tipo){
     b.style.background=CW;b.style.color="#64748B";b.style.borderColor="#E2E8F0";
   });
   btn.style.background=CN;btn.style.color=CW;btn.style.borderColor=CN;
-  // Show/hide monto field
   var mw=$("pend_monto_w");
   if(mw) mw.style.display=(tipo==="cobro"||tipo==="acuerdo")?"block":"none";
+}
+function selPriorPend(btn,v){
+  var colores={alta:CR,media:CA,baja:CG};
+  $("pend_prior").value=v;
+  document.querySelectorAll("[data-prior]").forEach(b=>{
+    b.style.background=CW;b.style.color="#64748B";b.style.borderColor="#E2E8F0";
+  });
+  var c=colores[v]||CA;
+  btn.style.background=c;btn.style.color=CW;btn.style.borderColor=c;
 }
 
 async function guardarPendiente(){
@@ -3988,6 +4007,7 @@ async function guardarPendiente(){
   var montoRaw=val("pend_monto");
   var montoPendiente=montoRaw?parseFloat(montoRaw):null;
   var data={tipo:val("pend_tipo")||"otro",descripcion:desc,
+    prioridad:val("pend_prior")||"media",
     clienteId:val("pend_cliente")||"",fecha,completado:false,
     vendedor:ST.perfil?.nombre||"",ts:firebase.firestore.FieldValue.serverTimestamp()};
   if(montoPendiente&&montoPendiente>0) data.montoPendiente=montoPendiente;
