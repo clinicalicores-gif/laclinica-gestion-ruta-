@@ -4153,8 +4153,7 @@ function mFichaCliente(c){
   var limiteAlc=c.limiteCred&&deuda>=c.limiteCred;
 
   return`${mHeader(h(c.nombre))}
-  <div style="font-size:11px;color:#64748B;margin-top:-10px;margin-bottom:14px;">
-    ${h(c.encargado||"")}${c.zona?" · "+h(c.zona):""}${c.tel?` · 📞 ${h(c.tel)}`:""}</div>
+  <div style="font-size:11px;color:#64748B;margin-top:-10px;margin-bottom:14px;">${h(c.encargado||"")}${c.zona?" · "+h(c.zona):""}${c.tel?" · 📞 "+h(c.tel):""}${c.tel2?" · 📞 "+h(c.tel2):""}${c.diaCobro?" · 💰 Cobro: "+h(c.diaCobro):""}${c.cedula?" · CI: "+h(c.cedula):""}</div>
 
   <!-- 3 stats rápidos -->
   <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px;">
