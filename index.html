@@ -1701,7 +1701,7 @@ function htmlEntregas(){
   var pend=ST.pedidos.filter(p=>p.estado==="despachado"&&p.factura&&p.entrega&&p.entrega.estado!=="entregado");
   var entregadosHoy=ST.pedidos.filter(p=>p.entrega&&p.entrega.estado==="entregado"&&p.entrega.fechaEntrega===hoyStr);
   var histEnt=ST.pedidos.filter(p=>p.entrega&&p.entrega.estado==="entregado");
-  histEnt.sort((a,b)=>(b.entrega?.fechaEntrega||"").localeCompare(a.entrega?.fechaEntrega||""));
+  histEnt.sort((a,b)=>{var sk=s=>{var p=(s||"").split("/");return p.length===3?p[2]+p[1]+p[0]:s||""};return sk(b.entrega?.fechaEntrega||"").localeCompare(sk(a.entrega?.fechaEntrega||""));});
   var yo=pend.filter(p=>p.entrega?.responsable!=="bodega");
   var bod=pend.filter(p=>p.entrega?.responsable==="bodega");
   var totalHistEnt=histEnt.reduce((s,p)=>s+(p.montoConIVA||p.monto||0),0);
