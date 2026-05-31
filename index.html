@@ -2675,10 +2675,16 @@ async function procesarAcuerdo6(cId){
   try{
     var ref=await db.collection("pendientes").add(pData);
     ST.pendientes.unshift({id:ref.id,...pData});
-    for(var ped of pedsPend){
-      await db.collection("pedidos").doc(ped.id).update({acuerdoPago:acuerdo,ts:firebase.firestore.FieldValue.serverTimestamp()});
-      var idx=ST.pedidos.findIndex(x=>x.id===ped.id);
-      if(idx>=0) ST.pedidos[idx].acuerdoPago=acuerdo;
+    if(pedsPend.length>0){
+      var batch=db.batch();
+      pedsPend.forEach(ped=>{
+        batch.update(db.collection("pedidos").doc(ped.id),{acuerdoPago:acuerdo,ts:firebase.firestore.FieldValue.serverTimestamp()});
+      });
+      await batch.commit();
+      pedsPend.forEach(ped=>{
+        var idx=ST.pedidos.findIndex(x=>x.id===ped.id);
+        if(idx>=0) ST.pedidos[idx].acuerdoPago=acuerdo;
+      });
     }
     toast("✓ Acuerdo agendado para "+fechaFmt,CG);
     setState({modal:null});
