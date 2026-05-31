@@ -3774,12 +3774,13 @@ function debPend(v){
 function buildPendCards(q){
   var tipoBg={cobro:CR,visita:CB,acuerdo:CG,jefe:CP,otro:"#64748B"};
   var tipoLabel={cobro:"💰 Cobro",visita:"📍 Visita",acuerdo:"🤝 Acuerdo",jefe:"👔 Jefe",otro:"📝 Otro"};
+  var skF=s=>{var p=(s||"").split("/");return p.length===3?p[2]+p[1]+p[0]:s||""};
   var sorted=ST.pendientes.slice().sort((a,b)=>{
     var av=!a.completado&&fechaPasada(a.fecha);
     var bv=!b.completado&&fechaPasada(b.fecha);
     if(av&&!bv)return-1;if(!av&&bv)return 1;
     if(a.completado&&!b.completado)return 1;if(!a.completado&&b.completado)return-1;
-    return(b.fecha||"").localeCompare(a.fecha||"");
+    return skF(b.fecha).localeCompare(skF(a.fecha));
   });
   var pends=sorted.filter(p=>!p.completado);
   var comps=sorted.filter(p=>p.completado);
@@ -3859,7 +3860,7 @@ function htmlPendientes(){
   var resLabel={exitoso:"Completado",nuevo_acuerdo:"Nuevo acuerdo",volver_otro_dia:"Volver otro día"};
   var histPend=ST.pendientes.filter(p=>p.completado===true);
   if(q){var ql=q.toLowerCase();histPend=histPend.filter(p=>(p.descripcion||"").toLowerCase().includes(ql)||(p.tipo||"").toLowerCase().includes(ql));}
-  histPend.sort((a,b)=>(b.fechaCompletado||b.fecha||"").localeCompare(a.fechaCompletado||a.fecha||""));
+  histPend.sort((a,b)=>skF(b.fechaCompletado||b.fecha).localeCompare(skF(a.fechaCompletado||a.fecha)));
   var tipoBgH={cobro:CR,visita:CB,acuerdo:CG,jefe:CP,otro:"#64748B"};
   var tipoLabelH={cobro:"💰 Cobro",visita:"📍 Visita",acuerdo:"🤝 Acuerdo",jefe:"👔 Jefe",otro:"📝 Otro"};
   return`<div class="fade">${subHeader("Pendientes","📋")}
