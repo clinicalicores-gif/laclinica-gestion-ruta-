@@ -99,6 +99,7 @@ function toast(msg,color,dur){
 
 function fmtM(n){var v=parseFloat(n||0).toFixed(2);var p=v.split(".");return"$"+p[0].replace(/\B(?=(\d{3})+(?!\d))/g,",")+"."+p[1];}
 function fmtNota(n){return"#"+String(n||0).padStart(3,"0");}
+function skF(s){var p=(s||"").split("/");return p.length===3?p[2]+p[1]+p[0]:s||"";}
 function getNextNota(){
   var n=(parseInt(localStorage.getItem("vr_ultimo_numero_nota")||"0"))+1;
   localStorage.setItem("vr_ultimo_numero_nota",String(n));
@@ -3670,16 +3671,16 @@ function debPend(v){
 function buildPendCards(q){
   var tipoBg={cobro:CR,visita:CB,acuerdo:CG,jefe:CP,otro:"#64748B"};
   var tipoLabel={cobro:"💰 Cobro",visita:"📍 Visita",acuerdo:"🤝 Acuerdo",jefe:"👔 Jefe",otro:"📝 Otro"};
-  var skF=s=>{var p=(s||"").split("/");return p.length===3?p[2]+p[1]+p[0]:s||""};
-  var sorted=ST.pendientes.slice().sort((a,b)=>{
-    var av=!a.completado&&fechaPasada(a.fecha);
-    var bv=!b.completado&&fechaPasada(b.fecha);
+  var tipoOrd={cobro:0,visita:1,acuerdo:2,jefe:3,otro:4};
+  var active=ST.pendientes.filter(p=>!p.completado).sort((a,b)=>{
+    var av=fechaPasada(a.fecha),bv=fechaPasada(b.fecha);
     if(av&&!bv)return-1;if(!av&&bv)return 1;
-    if(a.completado&&!b.completado)return 1;if(!a.completado&&b.completado)return-1;
-    return skF(b.fecha).localeCompare(skF(a.fecha));
+    var to=(tipoOrd[a.tipo]??4)-(tipoOrd[b.tipo]??4);
+    if(to!==0)return to;
+    return skF(a.fecha).localeCompare(skF(b.fecha));
   });
-  var pends=sorted.filter(p=>!p.completado);
-  var comps=sorted.filter(p=>p.completado);
+  var comps=ST.pendientes.filter(p=>p.completado).sort((a,b)=>skF(b.fechaCompletado||b.fecha).localeCompare(skF(a.fechaCompletado||a.fecha)));
+  var pends=active;
   if(q){var ql=q.toLowerCase();
     pends=pends.filter(p=>(p.descripcion||"").toLowerCase().includes(ql)||(p.tipo||"").toLowerCase().includes(ql));
     comps=comps.filter(p=>(p.descripcion||"").toLowerCase().includes(ql)||(p.tipo||"").toLowerCase().includes(ql));
