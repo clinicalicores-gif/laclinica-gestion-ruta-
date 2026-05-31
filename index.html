@@ -2166,23 +2166,28 @@ function debDev(v){
 }
 function buildDevCards(lista){
   if(!lista.length) return`<div style="text-align:center;padding:48px;color:#94A3B8;">Sin devoluciones</div>`;
-  var colorEstado={pendiente:CA,resuelto:CG,rechazado:CR,proceso:CB};
-  return lista.map(d=>`<div style="background:${CW};border-radius:12px;padding:12px;margin-bottom:7px;
-    box-shadow:0 1px 3px rgba(0,0,0,0.06);border-left:4px solid ${colorEstado[d.estado||"pendiente"]||CA};">
+  var colorEstado={Pendiente:CA,Cambiado:CG,Rechazado:CR,pendiente:CA,resuelto:CG,rechazado:CR,proceso:CB};
+  return lista.map(d=>{
+    var estadoKey=d.estado||"Pendiente";
+    var colE=colorEstado[estadoKey]||CA;
+    return`<div style="background:${CW};border-radius:12px;padding:12px;margin-bottom:7px;
+    box-shadow:0 1px 3px rgba(0,0,0,0.06);border-left:4px solid ${colE};">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;">
       <div style="flex:1;min-width:0;">
         <div style="font-size:14px;font-weight:700;color:${CN};">${h(d.cliente||"")}</div>
         <div style="font-size:11px;color:#64748B;">${h(d.producto||"")}${d.cantidad?" · "+d.cantidad+"u":""} · ${h(d.fecha||"")}</div>
         ${d.motivo?`<div style="font-size:11px;color:${CA};margin-top:2px;">↩️ ${h(d.motivo)}</div>`:""}
+        ${d.productoReemplazo?`<div style="font-size:11px;color:${CG};margin-top:2px;">🔄 ${h(d.productoReemplazo)}${d.valorReemplazo?` — ${fmtM(d.valorReemplazo)}`:""}</div>`:""}
         ${d.notas?`<div style="font-size:11px;color:#64748B;margin-top:2px;">📝 ${h(d.notas)}</div>`:""}
       </div>
       <div style="text-align:right;flex-shrink:0;margin-left:8px;">
         ${d.monto?`<div style="font-size:14px;font-weight:700;color:${CR};">${fmtM(d.monto)}</div>`:""}
-        <div style="background:${colorEstado[d.estado||"pendiente"]||CA};color:${CW};border-radius:7px;
-          padding:2px 8px;font-size:10px;font-weight:700;margin-top:3px;">${h(d.estado||"pendiente")}</div>
+        <div style="background:${colE};color:${CW};border-radius:7px;
+          padding:2px 8px;font-size:10px;font-weight:700;margin-top:3px;">${h(estadoKey)}</div>
       </div>
     </div>
-  </div>`).join("");
+    ${d.foto?`<img src="${d.foto}" style="width:100%;max-height:140px;object-fit:cover;border-radius:8px;margin-top:4px;" />`:""}
+  </div>`;}).join("");
 }
 function htmlDevoluciones(){
   var q=(ST.searchDev||"").toLowerCase();
@@ -2207,6 +2212,9 @@ function htmlDevoluciones(){
         value="${h(ST.searchDev||"")}" oninput="debDev(this.value)"
         style="width:100%;border:2px solid #E2E8F0;border-radius:10px;
         padding:10px 12px 10px 33px;font-size:13px;outline:none;"/>
+    </div>
+    <div style="background:#FEF3C7;border:1px solid #FCD34D;border-radius:10px;padding:10px 12px;margin-bottom:10px;font-size:12px;font-weight:700;color:#92400E;">
+      ⚠️ No se devuelve dinero. Solo cambio por producto de igual o mayor valor.
     </div>
     <button onclick="setState({modal:{tipo:'nuevaDev'}})"
       style="width:100%;background:${CN};border:none;border-radius:13px;padding:13px;
@@ -3269,6 +3277,9 @@ async function guardarGasto(){
 function mNuevaDev(){
   var nombresClientes=ST.clientes.map(c=>c.nombre).sort();
   return`${mHeader("Nueva Devolución")}
+  <div style="background:#FEF3C7;border:1px solid #FCD34D;border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:12px;font-weight:700;color:#92400E;">
+    ⚠️ No se devuelve dinero. Solo cambio por producto de igual o mayor valor.
+  </div>
   <div style="margin-bottom:12px;">
     <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Cliente *</label>
     <input id="dv_cli" type="text" placeholder="Nombre del negocio" list="dv_cli_list"
@@ -3276,7 +3287,7 @@ function mNuevaDev(){
     <datalist id="dv_cli_list">${nombresClientes.map(n=>`<option value="${h(n)}">`).join("")}</datalist>
   </div>
   <div style="margin-bottom:12px;">
-    <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Producto *</label>
+    <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Producto devuelto *</label>
     <input id="dv_prod" type="text" placeholder="Nombre del producto"
       style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:14px;outline:none;"/>
   </div>
@@ -3287,10 +3298,23 @@ function mNuevaDev(){
         style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:14px;outline:none;"/>
     </div>
     <div style="flex:1;">
-      <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Monto $</label>
+      <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Valor devuelto $</label>
       <input id="dv_monto" type="number" step="0.01" placeholder="0.00"
         style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:14px;outline:none;"/>
     </div>
+  </div>
+  <div style="margin-bottom:12px;">
+    <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">📷 Foto del producto devuelto</label>
+    <input id="dv_foto" type="file" accept="image/*" capture="environment"
+      style="width:100%;border:2px dashed #E2E8F0;border-radius:11px;padding:10px;font-size:13px;"/>
+  </div>
+  <div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:11px;padding:12px;margin-bottom:12px;">
+    <div style="font-size:12px;font-weight:800;color:${CG};margin-bottom:8px;">📦 Producto de reemplazo</div>
+    <input id="dv_rep_prod" type="text" placeholder="Nombre del producto de reemplazo"
+      style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:11px;font-size:14px;outline:none;margin-bottom:8px;"/>
+    <input id="dv_rep_val" type="number" step="0.01" placeholder="Valor del reemplazo $"
+      style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:11px;font-size:14px;outline:none;"/>
+    <div style="font-size:11px;color:#64748B;margin-top:6px;">Si el reemplazo vale más, la diferencia se suma a la cuenta del cliente.</div>
   </div>
   <div style="margin-bottom:12px;">
     <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Motivo</label>
@@ -3301,7 +3325,7 @@ function mNuevaDev(){
   <div style="margin-bottom:12px;">
     <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Estado</label>
     <select id="dv_estado" style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:14px;outline:none;background:${CW};">
-      ${["pendiente","proceso","resuelto","rechazado"].map(e=>`<option>${e}</option>`).join("")}
+      ${["Pendiente","Cambiado","Rechazado"].map(e=>`<option>${e}</option>`).join("")}
     </select>
   </div>
   <div style="margin-bottom:16px;">
@@ -3317,14 +3341,40 @@ function mNuevaDev(){
 async function guardarDev(){
   var cliente=val("dv_cli"),producto=val("dv_prod");
   if(!cliente||!producto){toast("Cliente y producto son obligatorios",CR);return;}
+  var estado=val("dv_estado")||"Pendiente";
+  var montoDevuelto=parseFloat(val("dv_monto")||0);
+  var repProd=val("dv_rep_prod")||"";
+  var repVal=parseFloat(val("dv_rep_val")||0);
+  var fotoInput=$("dv_foto");
+  var foto="";
+  if(fotoInput&&fotoInput.files&&fotoInput.files[0]){
+    try{foto=await comprimirFoto(fotoInput.files[0]);}catch(e){}
+  }
   var data={cliente,producto,cantidad:parseInt(val("dv_cant")||1),
-    monto:parseFloat(val("dv_monto")||0),motivo:val("dv_mot"),
-    estado:val("dv_estado")||"pendiente",notas:val("dv_notas")||"",
-    fecha:fmtF(),ts:firebase.firestore.FieldValue.serverTimestamp()};
+    monto:montoDevuelto,motivo:val("dv_mot"),
+    estado,notas:val("dv_notas")||"",
+    productoReemplazo:repProd,valorReemplazo:repVal,
+    foto,fecha:fmtF(),ts:firebase.firestore.FieldValue.serverTimestamp()};
   try{
     var ref=await db.collection("devoluciones").add(data);
-    ST.devoluciones.unshift({id:ref.id,...data});
-    toast("✓ Devolución registrada",CG);setState({modal:null});
+    var {ts:_tsD,...dataLocal}=data;
+    ST.devoluciones.unshift({id:ref.id,...dataLocal});
+    // Si Cambiado y reemplazo vale más → diferencia suma a cuenta del cliente
+    if(estado==="Cambiado"&&repVal>montoDevuelto+0.01){
+      var diferencia=repVal-montoDevuelto;
+      var c=ST.clientes.find(x=>x.nombre===cliente);
+      if(c){
+        var nPend=(parseFloat(c.pendiente)||0)+diferencia;
+        await db.collection("clientes").doc(c.id).update({pendiente:nPend});
+        c.pendiente=nPend;
+        toast("✓ Devolución registrada. Diferencia de "+fmtM(diferencia)+" sumada a cuenta de "+c.nombre,CG,5000);
+      } else {
+        toast("✓ Devolución registrada. Nota: cliente no encontrado para actualizar deuda.",CA,5000);
+      }
+    } else {
+      toast("✓ Devolución registrada",CG);
+    }
+    setState({modal:null});
   }catch(e){toast("Error: "+e.message,CR);}
 }
 
