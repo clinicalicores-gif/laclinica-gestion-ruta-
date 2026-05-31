@@ -2298,9 +2298,17 @@ function htmlCatalogoAdmin(){
     </div>
   </div>
   <div style="padding:14px 14px 80px;">
-    <button onclick="setState({modal:{tipo:'nuevoProducto'}})"
-      style="width:100%;background:${CN};border:none;border-radius:13px;padding:13px;
-      color:${CW};font-size:15px;font-weight:700;cursor:pointer;margin-bottom:14px;">+ Nuevo Producto</button>
+    <div style="display:flex;gap:8px;margin-bottom:14px;">
+      <button onclick="setState({modal:{tipo:'nuevoProducto'}})"
+        style="flex:1;background:${CN};border:none;border-radius:13px;padding:13px;
+        color:${CW};font-size:14px;font-weight:700;cursor:pointer;">+ Nuevo</button>
+      <label style="flex:1;cursor:pointer;">
+        <div style="background:#2563EB;border:none;border-radius:13px;padding:13px;
+          color:${CW};font-size:14px;font-weight:700;text-align:center;">📥 Importar CSV/Excel</div>
+        <input type="file" accept=".xlsx,.csv" onchange="importarCatalogo(event)" style="display:none;"/>
+      </label>
+    </div>
+    <div id="imp_cat_res2" style="font-size:12px;color:#64748B;margin-bottom:8px;"></div>
     <div id="cat_admin_lista">${buildCatAdminCards(lista)}</div>
   </div></div>`;
 }
@@ -4629,7 +4637,7 @@ async function restaurarJSON(event){
 async function importarCatalogo(event){
   var file=event.target.files&&event.target.files[0];
   if(!file)return;
-  var res=$("imp_cat_res");
+  var res=$("imp_cat_res")||$("imp_cat_res2");
   if(res)res.innerHTML="⏳ Procesando...";
   try{
     if(typeof XLSX==="undefined"){toast("Librería Excel no cargada",CR);return;}
@@ -4662,14 +4670,16 @@ async function importarCatalogo(event){
       if(count%400===0){await batch.commit();batch=db.batch();}
     }
     await batch.commit();
-    if(res)res.innerHTML=`✅ ${ok} productos importados${err?" · ⚠️ "+err+" filas sin nombre":""}.`;
+    var resEl=$("imp_cat_res")||$("imp_cat_res2");
+    if(resEl)resEl.innerHTML=`✅ ${ok} productos importados${err?" · ⚠️ "+err+" filas sin nombre":""}.`;
     toast("✓ "+ok+" productos importados al catálogo",CG,5000);
     var snap=await db.collection("catalogo").get();
     ST.catalogo=snap.docs.map(d=>({id:d.id,...d.data()}));
     event.target.value="";
     render();
   }catch(e){
-    if(res)res.innerHTML="❌ Error: "+e.message;
+    var resEl2=$("imp_cat_res")||$("imp_cat_res2");
+    if(resEl2)resEl2.innerHTML="❌ Error: "+e.message;
     toast("Error al importar: "+e.message,CR,7000);
   }
 }
