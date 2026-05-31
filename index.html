@@ -928,8 +928,32 @@ function debCobro(v){
     else if(orden==="dias") pend=pend.sort((a,b)=>(diasDesde(a.fecha)||0)<(diasDesde(b.fecha)||0)?1:-1);
     else pend=pend.sort((a,b)=>(a.cliente||"").localeCompare(b.cliente||""));
     var el=$("cobro_list");
-    if(el) el.innerHTML=buildCobroCards(pend,hoy);
-    else render();
+    if(el){el.innerHTML=buildCobroCards(pend,hoy);return;}
+    var vista=ST.vistaCobranza||"activos";
+    if(vista==="historial"){
+      var elH=$("cobro_hist_list");
+      if(elH){
+        var cobHist=ST.pedidos.filter(p=>p.estadoCobro==="cobrado"||(p.montoCobrado||0)>0);
+        if(q) cobHist=cobHist.filter(p=>(p.cliente||"").toLowerCase().includes(q));
+        var sk=s=>{var p=(s||"").split("/");return p.length===3?p[2]+p[1]+p[0]:s||""};
+        cobHist.sort((a,b)=>sk(b.fechaCobro||b.fecha).localeCompare(sk(a.fechaCobro||a.fecha)));
+        elH.innerHTML=cobHist.length===0?`<div style="text-align:center;padding:40px 20px;color:#94A3B8;">Sin cobros registrados</div>`:
+          cobHist.map(p=>`<div style="background:#FFF;border-radius:12px;padding:12px;margin-bottom:7px;box-shadow:0 1px 3px rgba(0,0,0,0.06);border-left:4px solid #16A34A;">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:14px;font-weight:700;color:#0F2240;">${h(p.cliente)}</div>
+              <div style="font-size:11px;color:#64748B;margin-top:2px;">${p.fechaCobro?"✓ "+h(p.fechaCobro):""}${p.factura?" · "+h(p.factura):""}</div>
+              ${p.formaPago||p.formaCobro?`<div style="font-size:11px;color:#64748B;">${h(p.formaPago||p.formaCobro)}</div>`:""}
+            </div>
+            <div style="text-align:right;flex-shrink:0;margin-left:10px;">
+              <div style="font-size:14px;font-weight:700;color:#16A34A;">${fmtM(p.montoCobrado||0)}</div>
+              <div style="font-size:10px;color:#64748B;">${h(p.sistema||"")}</div>
+            </div>
+          </div></div>`).join("");
+        return;
+      }
+    }
+    render();
   },250);
 }
 function buildCobroCards(pend,hoy){
@@ -1374,6 +1398,7 @@ function htmlCobranza(){
       <div style="font-size:13px;color:${CG};font-weight:700;">Total cobrado</div>
       <div style="font-size:18px;font-weight:800;color:${CG};">${fmtM(totalHist)}</div>
     </div>
+    <div id="cobro_hist_list">
     ${cobHist.length===0?`<div style="text-align:center;padding:40px 20px;color:#94A3B8;">Sin cobros registrados</div>`:""}
     ${cobHist.map(p=>`<div style="background:${CW};border-radius:12px;padding:12px;margin-bottom:7px;
       box-shadow:0 1px 3px rgba(0,0,0,0.06);border-left:4px solid ${CG};">
@@ -1391,6 +1416,7 @@ function htmlCobranza(){
         </div>
       </div>
     </div>`).join("")}
+    </div>
   </div>
   `:`
   <div style="background:${CW};border-bottom:1px solid #E2E8F0;padding:8px 14px;overflow-x:auto;white-space:nowrap;">
