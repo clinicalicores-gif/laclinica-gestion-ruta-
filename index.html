@@ -348,7 +348,7 @@ function htmlAppDesktop(){
 function htmlSidebar(tab,nCart,rol){
   var nombre=getNombre();
   var vencPend=ST.pendientes.filter(p=>!p.completado&&fechaPasada(p.fecha)).length;
-  var pendEnt=ST.pedidos.filter(p=>p.entrega&&p.entrega.estado!=="entregado").length;
+  var pendEnt=ST.pedidos.filter(p=>p.estado==="despachado"&&p.factura).length;
   function sl(t,icon,label,badge){
     var active=tab===t;
     return`<button onclick="setState({tab:'${t}'})"
@@ -548,7 +548,7 @@ function htmlRuta(){
       </div>`;
     })()}
     ${(()=>{
-      var entPend=ST.pedidos.filter(p=>p.entrega&&p.entrega.estado!=="entregado").length;
+      var entPend=ST.pedidos.filter(p=>p.estado==="despachado"&&p.factura).length;
       return entPend>0?`<button onclick="setState({tab:'entregas'})"
         style="width:100%;background:${CO};border:none;border-radius:11px;padding:9px 13px;
         color:${CW};font-size:12px;font-weight:700;cursor:pointer;margin-bottom:10px;
@@ -1428,7 +1428,7 @@ function htmlMas(){
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:14px;">
     ${masCard("💰","Cobros","cobranza")}
     ${masCard("📦","Pedidos","pedidos")}
-    ${(()=>{var ep=ST.pedidos.filter(p=>p.entrega&&p.entrega.estado!=="entregado").length;
+    ${(()=>{var ep=ST.pedidos.filter(p=>p.estado==="despachado"&&p.factura).length;
     return`<button onclick="setState({tab:'entregas'})"
       style="background:${CW};border:none;border-radius:14px;padding:15px;cursor:pointer;
       text-align:left;box-shadow:0 1px 4px rgba(0,0,0,0.06);position:relative;">
@@ -1636,10 +1636,12 @@ async function procesarDespachar(id){
 }
 
 async function confirmarEntregar(id){
+  var p=ST.pedidos.find(x=>x.id===id);
+  if(!p||p.estado!=="despachado"){toast("Solo pedidos despachados pueden marcarse como entregados",CR);return;}
+  if(!p.factura){toast("El pedido no tiene número de factura registrado",CR);return;}
   if(!confirm("¿Confirmar como entregado?")) return;
   var pago=confirm("¿El cliente pagó ahora?\n\nAceptar = Sí pagó\nCancelar = Queda como deuda en Cobros");
   try{
-    var p=ST.pedidos.find(x=>x.id===id);
     var montoPagado=p?(p.saldoPendiente||p.montoConIVA||p.monto||0):0;
     var upd={estado:"entregado",ts:firebase.firestore.FieldValue.serverTimestamp()};
     if(pago){
@@ -1676,7 +1678,7 @@ async function confirmarEntregar(id){
 function htmlEntregas(){
   var vista=ST.vistaEntregas||"activos";
   var hoyStr=fmtF();
-  var pend=ST.pedidos.filter(p=>p.estado==="despachado"&&p.entrega&&p.entrega.estado!=="entregado");
+  var pend=ST.pedidos.filter(p=>p.estado==="despachado"&&p.factura&&p.entrega&&p.entrega.estado!=="entregado");
   var entregadosHoy=ST.pedidos.filter(p=>p.entrega&&p.entrega.estado==="entregado"&&p.entrega.fechaEntrega===hoyStr);
   var histEnt=ST.pedidos.filter(p=>p.entrega&&p.entrega.estado==="entregado");
   histEnt.sort((a,b)=>(b.entrega?.fechaEntrega||"").localeCompare(a.entrega?.fechaEntrega||""));
@@ -1805,6 +1807,8 @@ function entregaCard(p){
 }
 
 async function marcarEntregado(id,fotoB64){
+  var p=ST.pedidos.find(x=>x.id===id);
+  if(!p||p.estado!=="despachado"||!p.factura){toast("Pedido no válido para entrega",CR);return;}
   var upd={"entrega.estado":"entregado","entrega.fechaEntrega":fmtF(),
     estado:"entregado",ts:firebase.firestore.FieldValue.serverTimestamp()};
   if(fotoB64) upd.fotoEntrega=fotoB64;
@@ -1830,7 +1834,7 @@ async function marcarEntregadoConFoto(id,file){
 }
 
 function compartirListaBodega(){
-  var bod=ST.pedidos.filter(p=>p.entrega&&p.entrega.estado!=="entregado"&&p.entrega.responsable==="bodega");
+  var bod=ST.pedidos.filter(p=>p.estado==="despachado"&&p.factura&&p.entrega&&p.entrega.responsable==="bodega");
   if(bod.length===0){toast("No hay entregas de bodega pendientes",CA);return;}
   var txt="*📦 Lista de Entregas — Bodega*\n"+fmtF()+"\n\n";
   bod.forEach((p,i)=>{
