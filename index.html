@@ -1701,8 +1701,8 @@ function htmlEntregas(){
   var entregadosHoy=ST.pedidos.filter(p=>p.entrega&&p.entrega.estado==="entregado"&&p.entrega.fechaEntrega===hoyStr);
   var histEnt=ST.pedidos.filter(p=>p.entrega&&p.entrega.estado==="entregado");
   histEnt.sort((a,b)=>(b.entrega?.fechaEntrega||"").localeCompare(a.entrega?.fechaEntrega||""));
-  var yo=pend.filter(p=>p.entrega.responsable!=="bodega");
-  var bod=pend.filter(p=>p.entrega.responsable==="bodega");
+  var yo=pend.filter(p=>p.entrega?.responsable!=="bodega");
+  var bod=pend.filter(p=>p.entrega?.responsable==="bodega");
   var totalHistEnt=histEnt.reduce((s,p)=>s+(p.montoConIVA||p.monto||0),0);
   return`<div class="fade">
   <div style="background:${CO};padding:20px 16px 16px;">
