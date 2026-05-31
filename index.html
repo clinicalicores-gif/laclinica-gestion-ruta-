@@ -3760,8 +3760,16 @@ function htmlPendientes(){
   histPend.sort((a,b)=>skF(b.fechaCompletado||b.fecha).localeCompare(skF(a.fechaCompletado||a.fecha)));
   var tipoBgH={cobro:CR,visita:CB,acuerdo:CG,jefe:CP,otro:"#64748B"};
   var tipoLabelH={cobro:"💰 Cobro",visita:"📍 Visita",acuerdo:"🤝 Acuerdo",jefe:"👔 Jefe",otro:"📝 Otro"};
+  var hoyStr=fmtF();
+  var hoy=ST.pendientes.filter(p=>!p.completado&&p.fecha===hoyStr).length;
+  var venc=ST.pendientes.filter(p=>!p.completado&&fechaPasada(p.fecha)).length;
   return`<div class="fade">${subHeader("Pendientes","📋")}
   ${vistaToggle("vistaPendientes",vista)}
+  ${vista==="activos"?`<div style="display:flex;gap:8px;padding:10px 14px 4px;flex-wrap:wrap;">
+    ${hoy>0?`<span style="background:#DBEAFE;color:#1D4ED8;font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;">📅 Hoy: ${hoy}</span>`:""}
+    ${venc>0?`<span style="background:#FEE2E2;color:${CR};font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;">⚠️ Vencidos: ${venc}</span>`:""}
+    ${hoy===0&&venc===0?`<span style="background:#DCFCE7;color:${CG};font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;">✓ Al día</span>`:""}
+  </div>`:""}
   <div style="background:${CW};padding:10px 14px;border-bottom:1px solid #E2E8F0;">
     <div style="position:relative;">
       <span style="position:absolute;left:11px;top:50%;transform:translateY(-50%);font-size:13px;">🔍</span>
