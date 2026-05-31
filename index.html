@@ -1383,7 +1383,7 @@ function htmlCobranza(){
           <div style="font-size:11px;color:#64748B;margin-top:2px;">
             ${p.fechaCobro?"✓ "+h(p.fechaCobro):""}${p.factura?" · "+h(p.factura):""}
           </div>
-          ${p.formaPago?`<div style="font-size:11px;color:#64748B;">${h(p.formaPago)}</div>`:""}
+          ${p.formaPago||p.formaCobro?`<div style="font-size:11px;color:#64748B;">${h(p.formaPago||p.formaCobro)}</div>`:""}
         </div>
         <div style="text-align:right;flex-shrink:0;margin-left:10px;">
           <div style="font-size:14px;font-weight:700;color:${CG};">${fmtM(p.montoCobrado||0)}</div>
@@ -3669,7 +3669,7 @@ function mVerNota(p){
     </div>
     <div style="font-size:12px;color:#64748B;margin-bottom:2px;">Fecha: ${h(p.fecha||"")}</div>
     <div style="font-size:14px;font-weight:700;color:${CN};margin-bottom:2px;">Cliente: ${h(p.cliente||"")}</div>
-    ${p.formaPago?`<div style="font-size:11px;color:#64748B;margin-bottom:10px;">Forma de pago: ${h(p.formaPago)}</div>`:`<div style="margin-bottom:10px;"></div>`}
+    ${p.formaPago||p.formaCobro?`<div style="font-size:11px;color:#64748B;margin-bottom:10px;">Forma de pago: ${h(p.formaPago||p.formaCobro)}</div>`:`<div style="margin-bottom:10px;"></div>`}
     ${prods.length?prods.map(i=>`<div style="display:flex;justify-content:space-between;align-items:center;
       font-size:12px;margin-bottom:5px;padding-bottom:5px;border-bottom:1px solid #F1F5F9;">
       <span style="flex:1;padding-right:8px;">${i.cantidad}x ${h(i.nombre||"")}</span>
@@ -3752,7 +3752,7 @@ function imprimirNota(id){
   <h1>🥃 LA CLÍNICA</h1>
   <div class="sub">NOTA DE VENTA ${num}<br/>${h(p.fecha||"")} · ${h(p.sistema||"")}</div>
   <div style="margin-bottom:8px;"><b>Cliente:</b> ${h(p.cliente||"")}</div>
-  ${p.formaPago?`<div style="margin-bottom:8px;font-size:11px;color:#666;">Pago: ${h(p.formaPago)}</div>`:""}
+  ${p.formaPago||p.formaCobro?`<div style="margin-bottom:8px;font-size:11px;color:#666;">Pago: ${h(p.formaPago||p.formaCobro)}</div>`:""}
   <table>${rows}</table>
   <table style="margin-top:8px;">
     <tr><td style="color:#666;">Subtotal sin IVA</td><td style="text-align:right;">${fmtM(sinIVA)}</td></tr>
@@ -4528,7 +4528,7 @@ function exportarExcel(){
       Nota:"#"+String(p.numeroNota||0).padStart(3,"0"),
       Cliente:p.cliente||"",
       Sistema:p.sistema||"",
-      "Forma Pago":p.formaPago||"",
+      "Forma Pago":p.formaPago||p.formaCobro||"",
       "Total c/IVA":fmtN(p.montoConIVA||p.monto),
       "Sin IVA":fmtN((p.montoConIVA||p.monto)/1.15),
       "Saldo Pend.":fmtN(p.saldoPendiente),
