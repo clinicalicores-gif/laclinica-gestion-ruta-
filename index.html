@@ -637,7 +637,7 @@ function htmlRuta(){
       <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;margin-left:8px;">
         <span style="font-size:15px;font-weight:800;color:${CR};">${fmtM(c.pendiente)}</span>
         <button onclick="abrirCobroCliente('${c.id}')"
-          style="background:${CG};border:none;border-radius:8px;padding:6px 11px;
+          style="background:${CG};border:none;border-radius:8px;padding:11px 11px;min-height:44px;
           color:${CW};font-size:12px;font-weight:700;cursor:pointer;">Cobrar</button>
       </div>
     </div>`).join("")}
@@ -1586,19 +1586,19 @@ function htmlPedidos(){
       </div>`:""}
       <div style="display:flex;gap:6px;flex-wrap:wrap;">
         <button onclick="abrirNotaVenta('${p.id}')"
-          style="background:#F1F5F9;border:1px solid #E2E8F0;border-radius:7px;padding:6px 11px;
+          style="background:#F1F5F9;border:1px solid #E2E8F0;border-radius:7px;padding:11px 11px;min-height:44px;
           color:#64748B;font-size:11px;font-weight:700;cursor:pointer;">
           📄 ${p.numeroNota?fmtNota(p.numeroNota):"Nota"}</button>
         ${p.estado==="tomado"&&vista==="activos"?`<button onclick="cambiarEstado('${p.id}','facturado')"
-          style="background:${CB};border:none;border-radius:7px;padding:6px 12px;color:${CW};font-size:12px;font-weight:600;cursor:pointer;">✓ Facturar</button>`:""}
+          style="background:${CB};border:none;border-radius:7px;padding:11px 12px;min-height:44px;color:${CW};font-size:12px;font-weight:600;cursor:pointer;">✓ Facturar</button>`:""}
         ${p.estado==="facturado"&&vista==="activos"?`<button onclick="abrirDespachar('${p.id}')"
-          style="background:${CO};border:none;border-radius:7px;padding:6px 12px;color:${CW};font-size:12px;font-weight:600;cursor:pointer;">📦 Despachar</button>`:""}
+          style="background:${CO};border:none;border-radius:7px;padding:11px 12px;min-height:44px;color:${CW};font-size:12px;font-weight:600;cursor:pointer;">📦 Despachar</button>`:""}
         ${p.estado==="despachado"&&vista==="activos"?`<button onclick="confirmarEntregar('${p.id}')"
-          style="background:${CG};border:none;border-radius:7px;padding:6px 12px;color:${CW};font-size:12px;font-weight:600;cursor:pointer;">✓ Entregar</button>`:""}
+          style="background:${CG};border:none;border-radius:7px;padding:11px 12px;min-height:44px;color:${CW};font-size:12px;font-weight:600;cursor:pointer;">✓ Entregar</button>`:""}
         ${p.estado==="entregado"&&p.estadoCobro!=="cobrado"&&(p.saldoPendiente||0)>0?`<button onclick="abrirCobro('${p.id}')"
-          style="background:${CG};border:none;border-radius:7px;padding:6px 12px;color:${CW};font-size:12px;font-weight:600;cursor:pointer;">💵 Cobrar</button>`:""}
+          style="background:${CG};border:none;border-radius:7px;padding:11px 12px;min-height:44px;color:${CW};font-size:12px;font-weight:600;cursor:pointer;">💵 Cobrar</button>`:""}
         ${p.estado!=="cancelado"&&p.estado!=="entregado"&&vista==="activos"?`<button onclick="cambiarEstado('${p.id}','cancelado')"
-          style="background:#FEF2F2;border:1px solid #FECACA;border-radius:7px;padding:6px 10px;
+          style="background:#FEF2F2;border:1px solid #FECACA;border-radius:7px;padding:11px 10px;min-height:44px;
           color:${CR};font-size:11px;font-weight:600;cursor:pointer;">✕ Cancelar</button>`:""}
       </div>
     </div>`;
@@ -2372,7 +2372,7 @@ function mHeader(title){
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
     <h3 style="font-size:17px;font-weight:800;color:${CN};margin:0;">${title}</h3>
     <button onclick="setState({modal:null})"
-      style="background:#F1F5F9;border:none;border-radius:9px;padding:6px 12px;
+      style="background:#F1F5F9;border:none;border-radius:9px;padding:11px 14px;min-height:44px;
       font-size:16px;cursor:pointer;color:#64748B;font-weight:700;line-height:1;">✕</button>
   </div>`;
 }
