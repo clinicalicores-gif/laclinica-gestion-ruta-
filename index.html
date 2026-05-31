@@ -55,6 +55,8 @@ var ST={
   sistemaCarrito:"Perseo",
   search:"", searchCat:"", searchCobro:"", filtroCat:"Todos", filtroZona:"Todos", filtroDia:"Hoy", filtroPedidoCliente:"", filtroClientes:"todos",
   filtroCobro:"todos", ordenCobro:"monto",
+  vistaCobranza:"activos", vistaPendientes:"activos", vistaPedidos:"activos", vistaEntregas:"activos",
+  searchPedHist:"",
   filtroProspecto:"todos",
   searchCatAdmin:"", filtroCatAdmin:"todos",
   searchClAdmin:"", searchPend:"", searchProspecto:"", searchDev:"", searchGasto:"", filtroGasto:"todos",
@@ -927,6 +929,7 @@ function debCobro(v){
     else pend=pend.sort((a,b)=>(a.cliente||"").localeCompare(b.cliente||""));
     var el=$("cobro_list");
     if(el) el.innerHTML=buildCobroCards(pend,hoy);
+    else render();
   },250);
 }
 function buildCobroCards(pend,hoy){
@@ -1291,6 +1294,7 @@ async function guardarPedido(){
 // TAB 4 — COBRANZA
 // ═══════════════════════════════════════════════════════════════════
 function htmlCobranza(){
+  var vista=ST.vistaCobranza||"activos";
   var hoyD=new Date();hoyD.setHours(0,0,0,0);
   var hoyStr=fmtF();
   var diasSem=["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"];
@@ -1300,7 +1304,13 @@ function htmlCobranza(){
   var orden=ST.ordenCobro||"monto";
   var q=ST.searchCobro||"";
 
-  // Filtro chips
+  var total=todoPend.reduce((s,p)=>s+(p.saldoPendiente||0),0);
+  var cobradoHoy=ST.pedidos.filter(p=>p.fechaCobro===hoyStr).reduce((s,p)=>s+(p.montoCobrado||0),0);
+  var acuerdosHoy=todoPend.filter(p=>p.acuerdoPago&&(p.acuerdoPago.fecha===hoyStr||fechaPasada(p.acuerdoPago.fecha))).length;
+  var totalPerseo=todoPend.filter(p=>p.sistema!=="Importados").reduce((s,p)=>s+(p.saldoPendiente||0),0);
+  var totalImp=todoPend.filter(p=>p.sistema==="Importados").reduce((s,p)=>s+(p.saldoPendiente||0),0);
+
+  // Activos data
   var pend=todoPend.slice();
   if(filtro==="pendientes") pend=pend.filter(p=>!p.acuerdoPago);
   else if(filtro==="vencidos") pend=pend.filter(p=>{
@@ -1312,17 +1322,15 @@ function htmlCobranza(){
     return c&&c.diaCobro===hoyDia;
   });
   if(q) pend=pend.filter(p=>(p.cliente||"").toLowerCase().includes(q.toLowerCase()));
-  // Orden
   if(orden==="monto") pend=pend.sort((a,b)=>(b.saldoPendiente||0)-(a.saldoPendiente||0));
   else if(orden==="dias") pend=pend.sort((a,b)=>(diasDesde(a.fecha)||0)<(diasDesde(b.fecha)||0)?1:-1);
   else pend=pend.sort((a,b)=>(a.cliente||"").localeCompare(b.cliente||""));
 
-  var total=todoPend.reduce((s,p)=>s+(p.saldoPendiente||0),0);
-  var cobradoHoy=ST.pedidos.filter(p=>p.fechaCobro===hoyStr).reduce((s,p)=>s+(p.montoCobrado||0),0);
-  var acuerdosHoy=todoPend.filter(p=>p.acuerdoPago&&(p.acuerdoPago.fecha===hoyStr||fechaPasada(p.acuerdoPago.fecha))).length;
-  // Desglose Perseo vs Importados
-  var totalPerseo=todoPend.filter(p=>p.sistema!=="Importados").reduce((s,p)=>s+(p.saldoPendiente||0),0);
-  var totalImp=todoPend.filter(p=>p.sistema==="Importados").reduce((s,p)=>s+(p.saldoPendiente||0),0);
+  // Historial data
+  var cobHist=ST.pedidos.filter(p=>p.estadoCobro==="cobrado"||(p.montoCobrado||0)>0);
+  if(q) cobHist=cobHist.filter(p=>(p.cliente||"").toLowerCase().includes(q.toLowerCase()));
+  cobHist.sort((a,b)=>(b.fechaCobro||b.fecha||"").localeCompare(a.fechaCobro||a.fecha||""));
+  var totalHist=cobHist.reduce((s,p)=>s+(p.montoCobrado||0),0);
 
   var chips=[["todos","Todos"],["pendientes","Sin acuerdo"],["vencidos","Vencidos +15d"],["hoy","Cobros hoy"]];
   var ordOpts=[["monto","Mayor monto"],["dias","Más días"],["nombre","Por nombre"]];
@@ -1357,6 +1365,33 @@ function htmlCobranza(){
         padding:9px 12px 9px 34px;color:${CW};font-size:13px;outline:none;"/>
     </div>
   </div>
+  ${vistaToggle("vistaCobranza",vista)}
+  ${vista==="historial"?`
+  <div style="padding:14px 14px 80px;">
+    <div style="background:#F0FDF4;border-radius:12px;padding:11px 14px;margin-bottom:14px;
+      display:flex;justify-content:space-between;align-items:center;">
+      <div style="font-size:13px;color:${CG};font-weight:700;">Total cobrado</div>
+      <div style="font-size:18px;font-weight:800;color:${CG};">${fmtM(totalHist)}</div>
+    </div>
+    ${cobHist.length===0?`<div style="text-align:center;padding:40px 20px;color:#94A3B8;">Sin cobros registrados</div>`:""}
+    ${cobHist.map(p=>`<div style="background:${CW};border-radius:12px;padding:12px;margin-bottom:7px;
+      box-shadow:0 1px 3px rgba(0,0,0,0.06);border-left:4px solid ${CG};">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:14px;font-weight:700;color:${CN};">${h(p.cliente)}</div>
+          <div style="font-size:11px;color:#64748B;margin-top:2px;">
+            ${p.fechaCobro?"✓ "+h(p.fechaCobro):""}${p.factura?" · "+h(p.factura):""}
+          </div>
+          ${p.formaPago?`<div style="font-size:11px;color:#64748B;">${h(p.formaPago)}</div>`:""}
+        </div>
+        <div style="text-align:right;flex-shrink:0;margin-left:10px;">
+          <div style="font-size:14px;font-weight:700;color:${CG};">${fmtM(p.montoCobrado||0)}</div>
+          <div style="font-size:10px;color:#64748B;">${h(p.sistema||"")}</div>
+        </div>
+      </div>
+    </div>`).join("")}
+  </div>
+  `:`
   <div style="background:${CW};border-bottom:1px solid #E2E8F0;padding:8px 14px;overflow-x:auto;white-space:nowrap;">
     ${chips.map(([v,l])=>`<button onclick="setState({filtroCobro:'${v}'})"
       style="display:inline-block;margin-right:5px;padding:4px 10px;border-radius:20px;border:none;
@@ -1371,6 +1406,7 @@ function htmlCobranza(){
   <div id="cobro_list" style="padding:14px 14px 80px;">
     ${buildCobroCards(pend,hoyD)}
   </div>
+  `}
   </div>`;
 }
 
@@ -1449,21 +1485,52 @@ function subHeader(titulo,icon){
   </div>`;
 }
 
+function vistaToggle(key,actual){
+  return`<div style="display:flex;background:#F1F5F9;border-radius:10px;padding:3px;margin:10px 14px;">
+    <button onclick="setState({${key}:'activos'})"
+      style="flex:1;padding:7px 0;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;
+      background:${actual==='activos'?CW:'transparent'};color:${actual==='activos'?CN:'#64748B'};
+      box-shadow:${actual==='activos'?'0 1px 3px rgba(0,0,0,0.1)':'none'};">Activos</button>
+    <button onclick="setState({${key}:'historial'})"
+      style="flex:1;padding:7px 0;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;
+      background:${actual==='historial'?CW:'transparent'};color:${actual==='historial'?CN:'#64748B'};
+      box-shadow:${actual==='historial'?'0 1px 3px rgba(0,0,0,0.1)':'none'};">Historial</button>
+  </div>`;
+}
+
 // ── PEDIDOS ───────────────────────────────────────────────────────
 function htmlPedidos(){
+  var vista=ST.vistaPedidos||"activos";
   var colE={tomado:CA,facturado:CB,despachado:CO,entregado:CG,cancelado:"#94A3B8"};
   var filtCli=ST.filtroPedidoCliente||"";
-  var lista=filtCli?ST.pedidos.filter(p=>p.clienteId===filtCli):ST.pedidos;
   var nomFiltro=filtCli?(ST.clientes.find(x=>x.id===filtCli)?.nombre||""):"";
+  var sq=ST.searchPedHist||"";
+  var activosEst=["tomado","facturado","despachado"];
+  var histEst=["entregado","cancelado"];
+  var lista=ST.pedidos.filter(p=>vista==="activos"?activosEst.includes(p.estado):histEst.includes(p.estado));
+  if(filtCli) lista=lista.filter(p=>p.clienteId===filtCli);
+  if(vista==="historial"&&sq) lista=lista.filter(p=>
+    (p.cliente||"").toLowerCase().includes(sq.toLowerCase())||(p.fecha||"").includes(sq)
+  );
+  lista=lista.slice(0,100);
   return`<div class="fade">${subHeader("Pedidos","📦")}
+  ${vistaToggle("vistaPedidos",vista)}
   ${filtCli?`<div style="background:#EFF6FF;padding:8px 14px;display:flex;align-items:center;justify-content:space-between;">
     <div style="font-size:12px;color:${CB};font-weight:700;">📍 ${h(nomFiltro)} — ${lista.length} pedido${lista.length!==1?"s":""}</div>
     <button onclick="setState({filtroPedidoCliente:''})"
       style="background:none;border:none;color:${CB};font-size:12px;font-weight:700;cursor:pointer;">✕ Ver todos</button>
   </div>`:""}
+  ${vista==="historial"?`<div style="background:${CW};padding:8px 14px;border-bottom:1px solid #E2E8F0;">
+    <div style="position:relative;">
+      <span style="position:absolute;left:11px;top:50%;transform:translateY(-50%);font-size:13px;">🔍</span>
+      <input id="s_ped_hist" type="text" placeholder="Buscar cliente o fecha..." value="${h(sq)}"
+        oninput="setState({searchPedHist:this.value})"
+        style="width:100%;border:2px solid #E2E8F0;border-radius:10px;padding:9px 12px 9px 33px;font-size:13px;outline:none;"/>
+    </div>
+  </div>`:""}
   <div style="padding:14px 14px 80px;">
-    ${lista.length===0?`<div style="text-align:center;padding:48px;color:#94A3B8;">Sin pedidos</div>`:""}
-    ${lista.slice(0,80).map(p=>{
+    ${lista.length===0?`<div style="text-align:center;padding:48px;color:#94A3B8;">${vista==="activos"?"Sin pedidos activos":"Sin historial"}</div>`:""}
+    ${lista.map(p=>{
       var cli=ST.clientes.find(x=>x.id===p.clienteId);
       var tieneDeuda=cli&&(cli.pendiente||0)>0.01&&p.estadoCobro!=="cobrado";
       return`<div style="background:${CW};border-radius:13px;padding:13px;margin-bottom:8px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
@@ -1494,15 +1561,15 @@ function htmlPedidos(){
           style="background:#F1F5F9;border:1px solid #E2E8F0;border-radius:7px;padding:6px 11px;
           color:#64748B;font-size:11px;font-weight:700;cursor:pointer;">
           📄 ${p.numeroNota?fmtNota(p.numeroNota):"Nota"}</button>
-        ${p.estado==="tomado"?`<button onclick="cambiarEstado('${p.id}','facturado')"
+        ${p.estado==="tomado"&&vista==="activos"?`<button onclick="cambiarEstado('${p.id}','facturado')"
           style="background:${CB};border:none;border-radius:7px;padding:6px 12px;color:${CW};font-size:12px;font-weight:600;cursor:pointer;">✓ Facturar</button>`:""}
-        ${p.estado==="facturado"?`<button onclick="abrirDespachar('${p.id}')"
+        ${p.estado==="facturado"&&vista==="activos"?`<button onclick="abrirDespachar('${p.id}')"
           style="background:${CO};border:none;border-radius:7px;padding:6px 12px;color:${CW};font-size:12px;font-weight:600;cursor:pointer;">📦 Despachar</button>`:""}
-        ${p.estado==="despachado"?`<button onclick="confirmarEntregar('${p.id}')"
+        ${p.estado==="despachado"&&vista==="activos"?`<button onclick="confirmarEntregar('${p.id}')"
           style="background:${CG};border:none;border-radius:7px;padding:6px 12px;color:${CW};font-size:12px;font-weight:600;cursor:pointer;">✓ Entregar</button>`:""}
         ${p.estado==="entregado"&&(p.saldoPendiente||0)>0?`<button onclick="abrirCobro('${p.id}')"
           style="background:${CG};border:none;border-radius:7px;padding:6px 12px;color:${CW};font-size:12px;font-weight:600;cursor:pointer;">💵 Cobrar</button>`:""}
-        ${p.estado!=="cancelado"?`<button onclick="cambiarEstado('${p.id}','cancelado')"
+        ${p.estado!=="cancelado"&&vista==="activos"?`<button onclick="cambiarEstado('${p.id}','cancelado')"
           style="background:#FEF2F2;border:1px solid #FECACA;border-radius:7px;padding:6px 10px;
           color:${CR};font-size:11px;font-weight:600;cursor:pointer;">✕ Cancelar</button>`:""}
       </div>
@@ -1607,11 +1674,15 @@ async function confirmarEntregar(id){
 
 // ── CONTROL DE ENTREGAS ───────────────────────────────────────────
 function htmlEntregas(){
+  var vista=ST.vistaEntregas||"activos";
   var hoyStr=fmtF();
   var pend=ST.pedidos.filter(p=>p.estado==="despachado"&&p.entrega&&p.entrega.estado!=="entregado");
   var entregadosHoy=ST.pedidos.filter(p=>p.entrega&&p.entrega.estado==="entregado"&&p.entrega.fechaEntrega===hoyStr);
+  var histEnt=ST.pedidos.filter(p=>p.entrega&&p.entrega.estado==="entregado");
+  histEnt.sort((a,b)=>(b.entrega?.fechaEntrega||"").localeCompare(a.entrega?.fechaEntrega||""));
   var yo=pend.filter(p=>p.entrega.responsable!=="bodega");
   var bod=pend.filter(p=>p.entrega.responsable==="bodega");
+  var totalHistEnt=histEnt.reduce((s,p)=>s+(p.montoConIVA||p.monto||0),0);
   return`<div class="fade">
   <div style="background:${CO};padding:20px 16px 16px;">
     <div style="display:flex;align-items:center;justify-content:space-between;">
@@ -1624,6 +1695,36 @@ function htmlEntregas(){
         padding:7px 12px;color:${CW};font-size:13px;cursor:pointer;">← Volver</button>
     </div>
   </div>
+  ${vistaToggle("vistaEntregas",vista)}
+  ${vista==="historial"?`
+  <div style="padding:14px 14px 80px;">
+    <div style="background:#FFF7ED;border-radius:12px;padding:11px 14px;margin-bottom:14px;
+      display:flex;justify-content:space-between;align-items:center;">
+      <div style="font-size:13px;color:${CO};font-weight:700;">Total entregado · ${histEnt.length} pedido${histEnt.length!==1?"s":""}</div>
+      <div style="font-size:18px;font-weight:800;color:${CO};">${fmtM(totalHistEnt)}</div>
+    </div>
+    ${histEnt.length===0?`<div style="text-align:center;padding:40px;color:#94A3B8;">Sin entregas registradas</div>`:""}
+    ${histEnt.map(p=>`<div style="background:${CW};border-radius:12px;padding:12px;margin-bottom:7px;
+      box-shadow:0 1px 3px rgba(0,0,0,0.06);border-left:4px solid ${CG};">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:14px;font-weight:700;color:${CN};">${h(p.cliente)}</div>
+          <div style="font-size:11px;color:#64748B;margin-top:2px;">
+            ${p.entrega?.fechaEntrega?"✓ "+h(p.entrega.fechaEntrega)+" · ":""}${fmtNota(p.numeroNota)} · ${h(p.sistema||"")}
+          </div>
+          <div style="font-size:11px;color:#64748B;">${p.entrega?.responsable==="bodega"?"🏭 Bodega":"🚗 Yo entregué"}</div>
+        </div>
+        <div style="text-align:right;flex-shrink:0;margin-left:10px;">
+          <div style="font-size:14px;font-weight:700;color:${CN};">${fmtM(p.montoConIVA||p.monto)}</div>
+          <div style="font-size:10px;color:${CG};font-weight:700;">Entregado ✓</div>
+        </div>
+      </div>
+      ${p.fotoEntrega?`<div style="margin-top:8px;">
+        <img src="${h(p.fotoEntrega)}" style="width:100%;border-radius:8px;max-height:120px;object-fit:cover;"/>
+      </div>`:""}
+    </div>`).join("")}
+  </div>
+  `:`
   <div style="padding:14px 14px 80px;">
     ${pend.length===0?`<div style="text-align:center;padding:40px 20px 20px;color:#94A3B8;">
       <div style="font-size:40px;margin-bottom:12px;">✅</div>
@@ -1640,8 +1741,7 @@ function htmlEntregas(){
       style="width:100%;background:#25D366;border:none;border-radius:12px;padding:12px;
       color:${CW};font-size:14px;font-weight:700;cursor:pointer;margin-top:8px;">
       📲 Enviar lista a bodega por WhatsApp</button>`:""}
-
-    ${entregadosHoy.length>0?`<details style="margin-top:16px;" ontoggle="this.open&&this.querySelector('summary').textContent.startsWith('▶')&&(this.querySelector('summary').textContent=this.querySelector('summary').textContent.replace('▶','▼'))">
+    ${entregadosHoy.length>0?`<details style="margin-top:16px;">
       <summary style="font-size:12px;font-weight:800;color:${CG};text-transform:uppercase;
         letter-spacing:0.6px;list-style:none;cursor:pointer;padding:10px 0;
         display:flex;align-items:center;gap:6px;">
@@ -1666,7 +1766,9 @@ function htmlEntregas(){
         </div>`).join("")}
       </div>
     </details>`:""}
-  </div></div>`;
+  </div>
+  `}
+  </div>`;
 }
 
 function entregaCard(p){
@@ -3602,6 +3704,7 @@ function debPend(v){
   _pendTimer=setTimeout(()=>{
     var el=$("pend_lista");
     if(el) el.innerHTML=buildPendCards(v);
+    else render();
   },200);
 }
 function buildPendCards(q){
@@ -3681,9 +3784,19 @@ function buildPendCards(q){
   return out;
 }
 function htmlPendientes(){
+  var vista=ST.vistaPendientes||"activos";
   var vencidos=ST.pendientes.filter(p=>!p.completado&&fechaPasada(p.fecha)).length;
   var q=ST.searchPend||"";
+  // Historial data
+  var resIcono={exitoso:"✅",nuevo_acuerdo:"🔄",volver_otro_dia:"↩️"};
+  var resLabel={exitoso:"Completado",nuevo_acuerdo:"Nuevo acuerdo",volver_otro_dia:"Volver otro día"};
+  var histPend=ST.pendientes.filter(p=>p.completado===true);
+  if(q){var ql=q.toLowerCase();histPend=histPend.filter(p=>(p.descripcion||"").toLowerCase().includes(ql)||(p.tipo||"").toLowerCase().includes(ql));}
+  histPend.sort((a,b)=>(b.fechaCompletado||b.fecha||"").localeCompare(a.fechaCompletado||a.fecha||""));
+  var tipoBgH={cobro:CR,visita:CB,acuerdo:CG,jefe:CP,otro:"#64748B"};
+  var tipoLabelH={cobro:"💰 Cobro",visita:"📍 Visita",acuerdo:"🤝 Acuerdo",jefe:"👔 Jefe",otro:"📝 Otro"};
   return`<div class="fade">${subHeader("Pendientes","📋")}
+  ${vistaToggle("vistaPendientes",vista)}
   <div style="background:${CW};padding:10px 14px;border-bottom:1px solid #E2E8F0;">
     <div style="position:relative;">
       <span style="position:absolute;left:11px;top:50%;transform:translateY(-50%);font-size:13px;">🔍</span>
@@ -3691,6 +3804,36 @@ function htmlPendientes(){
         style="width:100%;border:2px solid #E2E8F0;border-radius:10px;padding:9px 12px 9px 33px;font-size:13px;outline:none;"/>
     </div>
   </div>
+  ${vista==="historial"?`
+  <div style="padding:14px 14px 80px;">
+    ${histPend.length===0?`<div style="text-align:center;padding:40px 20px;color:#94A3B8;">Sin pendientes completados</div>`:""}
+    ${histPend.map(p=>{
+      var c=p.clienteId?ST.clientes.find(x=>x.id===p.clienteId):null;
+      var res=p.resultadoCompletado||"exitoso";
+      return`<div style="background:${CW};border-radius:12px;padding:12px;margin-bottom:7px;
+        box-shadow:0 1px 3px rgba(0,0,0,0.06);border-left:4px solid ${tipoBgH[p.tipo]||"#CBD5E1"};">
+        <div style="display:flex;align-items:flex-start;gap:10px;">
+          <span style="font-size:20px;flex-shrink:0;">${resIcono[res]||"✅"}</span>
+          <div style="flex:1;min-width:0;">
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px;">
+              <span style="background:${tipoBgH[p.tipo]||"#64748B"};color:${CW};font-size:10px;
+                font-weight:700;padding:2px 8px;border-radius:20px;">${tipoLabelH[p.tipo]||p.tipo||""}</span>
+              <span style="font-size:10px;font-weight:700;color:#64748B;">${resLabel[res]||res}</span>
+            </div>
+            <div style="font-size:13px;font-weight:600;color:${CN};line-height:1.3;">${h(p.descripcion||"")}</div>
+            ${c?`<div style="font-size:11px;color:${CB};margin-top:3px;">👤 ${h(c.nombre)}</div>`:""}
+            <div style="font-size:11px;color:#94A3B8;margin-top:3px;">
+              📅 ${h(p.fecha||"")}${p.fechaCompletado?" · ✓ "+h(p.fechaCompletado):""}
+            </div>
+          </div>
+          <button onclick="reactivarPendiente('${p.id}')"
+            style="background:#FFFBEB;border:1px solid ${CA};border-radius:7px;padding:4px 8px;
+            color:${CA};font-size:10px;font-weight:700;cursor:pointer;flex-shrink:0;">↩</button>
+        </div>
+      </div>`;
+    }).join("")}
+  </div>
+  `:`
   <div style="padding:14px 14px 80px;">
     ${vencidos>0?`<div style="background:#FEF2F2;border:2px solid ${CR};border-radius:12px;padding:11px 14px;
       margin-bottom:12px;font-size:13px;font-weight:700;color:${CR};">
@@ -3699,7 +3842,9 @@ function htmlPendientes(){
       style="width:100%;background:${CN};border:none;border-radius:13px;padding:13px;
       color:${CW};font-size:15px;font-weight:700;cursor:pointer;margin-bottom:14px;">+ Nuevo Pendiente</button>
     <div id="pend_lista">${buildPendCards(q)}</div>
-  </div></div>`;
+  </div>
+  `}
+  </div>`;
 }
 
 function completarPendiente(id){
