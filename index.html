@@ -1760,7 +1760,7 @@ function htmlEntregas(){
           <div style="font-size:11px;color:#64748B;margin-top:2px;">
             ${p.entrega?.fechaEntrega?"✓ "+h(p.entrega.fechaEntrega)+" · ":""}${fmtNota(p.numeroNota)} · ${h(p.sistema||"")}
           </div>
-          <div style="font-size:11px;color:#64748B;">${p.entrega?.responsable==="bodega"?"🏭 Bodega":"🚗 Yo entregué"}</div>
+          <div style="font-size:11px;color:#64748B;">${p.entrega?.responsable==="bodega"?"🏭 Bodega":p.entrega?.responsable==="vendedor"?"🚗 Yo entregué":"✓ Entregado"}</div>
         </div>
         <div style="text-align:right;flex-shrink:0;margin-left:10px;">
           <div style="font-size:14px;font-weight:700;color:${CN};">${fmtM(p.montoConIVA||p.monto)}</div>
@@ -1800,7 +1800,7 @@ function htmlEntregas(){
           <div style="display:flex;justify-content:space-between;align-items:flex-start;">
             <div style="flex:1;min-width:0;">
               <div style="font-size:14px;font-weight:700;color:${CN};">${h(p.cliente)}</div>
-              <div style="font-size:11px;color:#64748B;margin-top:2px;">${fmtNota(p.numeroNota)} · ${h(p.sistema||"")} · ${h(p.entrega?.responsable==="bodega"?"Bodega":"Yo")}</div>
+              <div style="font-size:11px;color:#64748B;margin-top:2px;">${fmtNota(p.numeroNota)} · ${h(p.sistema||"")} · ${h(p.entrega?.responsable==="bodega"?"Bodega":p.entrega?.responsable==="vendedor"?"Yo":"—")}</div>
               ${p.notas?`<div style="font-size:11px;color:${CA};margin-top:2px;">📝 ${h(p.notas)}</div>`:""}
             </div>
             <div style="text-align:right;flex-shrink:0;margin-left:10px;">
