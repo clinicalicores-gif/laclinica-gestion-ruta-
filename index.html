@@ -1274,6 +1274,7 @@ async function guardarPedido(){
       estadoCobro,saldoPendiente,montoCobrado:yaPago?total:0,fecha:fmtF(),contactoFacturacion,
       numeroNota:nNota,vendedor:vendedorNombre,productos:prodsCopy,entrega:entregaObj,
       tipoFacturacion:tipoFac,nombreFacturacion:nombreFac,cedulaFacturacion:cedulaFac});
+    var saldoOk=true;
     if(!yaPago&&ST.clienteActivo.id){
       var nSaldo=(parseFloat(ST.clienteActivo.pendiente)||0)+total;
       try{
@@ -1281,10 +1282,10 @@ async function guardarPedido(){
         var cIdx=ST.clientes.findIndex(c=>c.id===ST.clienteActivo.id);
         if(cIdx>=0) ST.clientes[cIdx].pendiente=nSaldo;
         ST.clienteActivo.pendiente=nSaldo;
-      }catch(e){}
+      }catch(e){saldoOk=false;}
     }
     ST.carrito=[];saveCart();
-    toast(yaPago?"✓ Pedido guardado — cobrado":"✓ Pedido guardado",CG);
+    toast(yaPago?"✓ Pedido guardado — cobrado":saldoOk?"✓ Pedido guardado":"✓ Pedido guardado — ⚠️ Saldo del cliente no se actualizó, revisá su ficha",yaPago||saldoOk?CG:CA,saldoOk?3000:7000);
     ST._saving=false;
     setState({modal:null,tab:"ruta"});
   }catch(e){toast("Error: "+e.message,CR);ST._saving=false;}
