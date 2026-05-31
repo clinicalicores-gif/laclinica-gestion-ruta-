@@ -1512,11 +1512,12 @@ function htmlPedidos(){
   if(vista==="historial"&&sq) lista=lista.filter(p=>
     (p.cliente||"").toLowerCase().includes(sq.toLowerCase())||(p.fecha||"").includes(sq)
   );
+  var totalLista=lista.length;
   lista=lista.slice(0,100);
   return`<div class="fade">${subHeader("Pedidos","📦")}
   ${vistaToggle("vistaPedidos",vista)}
   ${filtCli?`<div style="background:#EFF6FF;padding:8px 14px;display:flex;align-items:center;justify-content:space-between;">
-    <div style="font-size:12px;color:${CB};font-weight:700;">📍 ${h(nomFiltro)} — ${lista.length} pedido${lista.length!==1?"s":""}</div>
+    <div style="font-size:12px;color:${CB};font-weight:700;">📍 ${h(nomFiltro)} — ${totalLista} pedido${totalLista!==1?"s":""}</div>
     <button onclick="setState({filtroPedidoCliente:''})"
       style="background:none;border:none;color:${CB};font-size:12px;font-weight:700;cursor:pointer;">✕ Ver todos</button>
   </div>`:""}
@@ -1663,7 +1664,7 @@ async function confirmarEntregar(id){
     if(pago&&p&&p.clienteId){
       var cIdx=ST.clientes.findIndex(c=>c.id===p.clienteId);
       if(cIdx>=0){
-        var nSaldo=Math.max(0,(ST.clientes[cIdx].pendiente||0)-(p.saldoPendiente||0));
+        var nSaldo=Math.max(0,(ST.clientes[cIdx].pendiente||0)-montoPagado);
         try{await db.collection("clientes").doc(p.clienteId).update({pendiente:nSaldo});
           ST.clientes[cIdx].pendiente=nSaldo;
           if(ST.clienteActivo?.id===p.clienteId) ST.clienteActivo.pendiente=nSaldo;
@@ -2491,7 +2492,7 @@ async function procesarCobro(id){
 function mCobrarCliente(cId){
   var cli=ST.clientes.find(x=>x.id===cId)||{};
   var pendientes=ST.pedidos.filter(p=>p.clienteId===cId&&(p.saldoPendiente||0)>0.01)
-    .sort((a,b)=>(b.fecha||"").localeCompare(a.fecha||""));
+    .sort((a,b)=>(a.fecha||"").localeCompare(b.fecha||""));
   if(!pendientes.length) return`${mHeader("💵 Cobrar")}
     <div style="text-align:center;padding:24px;color:#94A3B8;">Sin deudas pendientes para ${h(cli.nombre||"este cliente")}</div>`;
   var totalPend=pendientes.reduce((s,p)=>s+(p.saldoPendiente||0),0);
@@ -2618,7 +2619,7 @@ async function procesarAbonar6(cId){
         ts:firebase.firestore.FieldValue.serverTimestamp()
       });
       var idx=ST.pedidos.findIndex(x=>x.id===p.id);
-      if(idx>=0){ST.pedidos[idx].saldoPendiente=nuevoSaldo;ST.pedidos[idx].estadoCobro=eC;}
+      if(idx>=0){ST.pedidos[idx].saldoPendiente=nuevoSaldo;ST.pedidos[idx].estadoCobro=eC;ST.pedidos[idx].montoCobrado=(ST.pedidos[idx].montoCobrado||0)+pago;}
       restante-=pago;
     }
     var cIdx=ST.clientes.findIndex(x=>x.id===cId);
@@ -3750,7 +3751,10 @@ function buildPendCards(q){
   });
   var pends=sorted.filter(p=>!p.completado);
   var comps=sorted.filter(p=>p.completado);
-  if(q){var ql=q.toLowerCase();pends=pends.filter(p=>(p.descripcion||"").toLowerCase().includes(ql)||(p.tipo||"").toLowerCase().includes(ql));}
+  if(q){var ql=q.toLowerCase();
+    pends=pends.filter(p=>(p.descripcion||"").toLowerCase().includes(ql)||(p.tipo||"").toLowerCase().includes(ql));
+    comps=comps.filter(p=>(p.descripcion||"").toLowerCase().includes(ql)||(p.tipo||"").toLowerCase().includes(ql));
+  }
   var out="";
   if(!pends.length) out+=`<div style="text-align:center;padding:32px 20px;color:#94A3B8;font-size:15px;">🎉 Sin pendientes</div>`;
   out+=pends.map(p=>{
