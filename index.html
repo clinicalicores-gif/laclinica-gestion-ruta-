@@ -2917,6 +2917,24 @@ function camposCl(pre){
       <option value="">Ninguno</option>
       ${["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"].map(d=>`<option${(pre?.diaCobro||"")=== d?" selected":""}>${d}</option>`).join("")}
     </select>
+  </div>
+  <div style="margin-bottom:12px;">
+    <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Notas internas</label>
+    <textarea id="cl_notas" placeholder="Observaciones, instrucciones especiales, horarios..."
+      style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:13px;outline:none;resize:vertical;min-height:68px;font-family:inherit;"
+    >${h(pre?.notasInternas||"")}</textarea>
+  </div>
+  <div style="margin-bottom:16px;">
+    <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Foto del local</label>
+    ${pre?.fotoLocal?`<div style="margin-bottom:8px;">
+      <img src="${h(pre.fotoLocal)}" style="width:100%;max-height:160px;object-fit:cover;border-radius:11px;"/>
+      <div style="font-size:11px;color:#64748B;margin-top:4px;">Foto actual — sube una nueva para reemplazar</div>
+    </div>`:""}
+    <label style="display:flex;align-items:center;gap:10px;background:#F8FAFC;border:2px dashed #CBD5E1;border-radius:11px;padding:12px;cursor:pointer;">
+      <span style="font-size:20px;">📷</span>
+      <span style="font-size:13px;color:#64748B;">${pre?.fotoLocal?"Cambiar foto":"Tomar foto o subir imagen"}</span>
+      <input id="cl_foto" type="file" accept="image/*" style="display:none;"/>
+    </label>
   </div>`;
 }
 
@@ -2931,12 +2949,16 @@ function mNuevoCliente(){
 async function guardarNuevoCliente(){
   var nombre=val("cl_nom");
   if(!nombre){toast("El nombre es obligatorio",CR);return;}
+  var notasInternas=val("cl_notas")||"";
+  var fotoLocal="";
+  var fotoInput=$("cl_foto");
+  if(fotoInput&&fotoInput.files&&fotoInput.files[0]){try{fotoLocal=await comprimirFoto(fotoInput.files[0]);}catch(e){}}
   var data={nombre,encargado:val("cl_enc"),tel:val("cl_tel"),tel2:val("cl_tel2")||"",
     cedula:val("cl_cedula")||"",ruc:val("cl_ruc"),sistema:val("cl_sistema")||"",
     dir:val("cl_dir"),zona:val("cl_zona")||"Centro",precio:val("cl_precio")||"C",
     ordenRuta:parseInt(val("cl_orden")||999),limiteCred:parseFloat(val("cl_lim")||0),
     condicionesPago:val("cl_cond"),diasVisita:JSON.parse(val("cl_dias")||"[]"),
-    diaCobro:val("cl_diaCobro")||"",
+    diaCobro:val("cl_diaCobro")||"",notasInternas,fotoLocal,
     estado:"activo",pendiente:0,monto:0,ts:firebase.firestore.FieldValue.serverTimestamp()};
   try{
     var ref=await db.collection("clientes").add(data);
@@ -2959,12 +2981,17 @@ function mEditarCliente(c){
 async function actualizarCliente(id){
   var nombre=val("cl_nom");
   if(!nombre){toast("El nombre es obligatorio",CR);return;}
+  var notasInternas=val("cl_notas")||"";
+  var fotoLocal="";
+  var fotoInput=$("cl_foto");
+  if(fotoInput&&fotoInput.files&&fotoInput.files[0]){try{fotoLocal=await comprimirFoto(fotoInput.files[0]);}catch(e){}}
+  if(!fotoLocal){var cEx=ST.clientes.find(x=>x.id===id);fotoLocal=cEx?.fotoLocal||"";}
   var data={nombre,encargado:val("cl_enc"),tel:val("cl_tel"),tel2:val("cl_tel2")||"",
     cedula:val("cl_cedula")||"",ruc:val("cl_ruc"),sistema:val("cl_sistema")||"",
     dir:val("cl_dir"),zona:val("cl_zona"),precio:val("cl_precio"),
     ordenRuta:parseInt(val("cl_orden")||999),limiteCred:parseFloat(val("cl_lim")||0),
     condicionesPago:val("cl_cond"),diasVisita:JSON.parse(val("cl_dias")||"[]"),
-    diaCobro:val("cl_diaCobro")||"",
+    diaCobro:val("cl_diaCobro")||"",notasInternas,fotoLocal,
     ts:firebase.firestore.FieldValue.serverTimestamp()};
   try{
     await db.collection("clientes").doc(id).update(data);
@@ -4143,6 +4170,14 @@ function mFichaCliente(c){
     <div style="font-size:10px;font-weight:800;color:${CB};margin-bottom:4px;">💬 CONDICIONES</div>
     <div style="font-size:12px;color:${CN};">${h(c.condicionesPago)}</div>
   </div>`:""}
+  ${c.notasInternas?`<div style="background:#FFFBEB;border-left:3px solid ${CA};
+    border-radius:0 10px 10px 0;padding:10px 12px;margin-bottom:10px;">
+    <div style="font-size:10px;font-weight:800;color:${CA};margin-bottom:4px;">📝 NOTAS INTERNAS</div>
+    <div style="font-size:12px;color:${CN};white-space:pre-wrap;">${h(c.notasInternas)}</div>
+  </div>`:""}
+  ${c.fotoLocal?`<div style="margin-bottom:10px;border-radius:12px;overflow:hidden;">
+    <img src="${h(c.fotoLocal)}" style="width:100%;max-height:180px;object-fit:cover;display:block;"/>
+  </div>`:""}
 
   <!-- Estadísticas compactas -->
   ${ped30.length>0?`<div style="background:#F8FAFC;border-radius:10px;padding:9px 12px;
@@ -4603,12 +4638,16 @@ function mNuevoClienteDesdeProspecto(pros){
 async function guardarClienteDesdeProspecto(prospectoId){
   var nombre=val("cl_nom");
   if(!nombre){toast("El nombre es obligatorio",CR);return;}
+  var notasInternas=val("cl_notas")||"";
+  var fotoLocal="";
+  var fotoInput=$("cl_foto");
+  if(fotoInput&&fotoInput.files&&fotoInput.files[0]){try{fotoLocal=await comprimirFoto(fotoInput.files[0]);}catch(e){}}
   var data={nombre,encargado:val("cl_enc"),tel:val("cl_tel"),tel2:val("cl_tel2")||"",
     cedula:val("cl_cedula")||"",ruc:val("cl_ruc"),sistema:val("cl_sistema")||"",
     dir:val("cl_dir"),zona:val("cl_zona")||"Centro",precio:val("cl_precio")||"C",
     ordenRuta:parseInt(val("cl_orden")||999),limiteCred:parseFloat(val("cl_lim")||0),
     condicionesPago:val("cl_cond"),diasVisita:JSON.parse(val("cl_dias")||"[]"),
-    diaCobro:val("cl_diaCobro")||"",
+    diaCobro:val("cl_diaCobro")||"",notasInternas,fotoLocal,
     estado:"activo",pendiente:0,monto:0,ts:firebase.firestore.FieldValue.serverTimestamp()};
   try{
     var ref=await db.collection("clientes").add(data);
