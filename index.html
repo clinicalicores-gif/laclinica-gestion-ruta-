@@ -470,7 +470,7 @@ function htmlRuta(){
   var totalDeuda=lista.reduce((s,c)=>s+(c.pendiente||0),0);
   var conDeuda=lista.filter(c=>(c.pendiente||0)>0).length;
   var set21=new Set(ST.clientes.filter(c=>{
-    var peds=ST.pedidos.filter(p=>p.clienteId===c.id&&p.estado!=="cancelado");
+    var peds=ST.pedidos.filter(p=>p.clienteId===c.id&&p.estado!=="cancelado").sort((a,b)=>skF(b.fecha).localeCompare(skF(a.fecha)));
     if(!peds.length)return true;var d=diasDesde(peds[0].fecha);return d!=null&&d>=21;
   }).map(c=>c.id));
   var zonas=["Todos",...ZONAS];
@@ -1915,7 +1915,7 @@ function debClAdmin(v){
     var q=v.toLowerCase();
     var filtro=ST.filtroClientes||"todos";
     var todos=ST.clientes.filter(c=>c.estado!=="inactivo");
-    var inactivos21=todos.filter(c=>{var peds=ST.pedidos.filter(p=>p.clienteId===c.id);if(!peds.length)return true;var d=diasDesde(peds[0].fecha);return d!==null&&d>=21;});
+    var inactivos21=todos.filter(c=>{var peds=ST.pedidos.filter(p=>p.clienteId===c.id&&p.estado!=="cancelado").sort((a,b)=>skF(b.fecha).localeCompare(skF(a.fecha)));if(!peds.length)return true;var d=diasDesde(peds[0].fecha);return d!==null&&d>=21;});
     var conDeuda=todos.filter(c=>(c.pendiente||0)>0.01);
     var lista=filtro==="inactivos"?inactivos21:filtro==="deuda"?conDeuda:todos;
     if(q) lista=lista.filter(c=>(c.nombre||"").toLowerCase().includes(q)||(c.encargado||"").toLowerCase().includes(q)||(c.zona||"").toLowerCase().includes(q));
@@ -1963,7 +1963,7 @@ function htmlClientesAdmin(){
   var q=(ST.searchClAdmin||"").toLowerCase();
   var todos=ST.clientes.filter(c=>c.estado!=="inactivo").sort((a,b)=>(a.nombre||"").localeCompare(b.nombre||""));
   var inactivos21=todos.filter(c=>{
-    var peds=ST.pedidos.filter(p=>p.clienteId===c.id);
+    var peds=ST.pedidos.filter(p=>p.clienteId===c.id&&p.estado!=="cancelado").sort((a,b)=>skF(b.fecha).localeCompare(skF(a.fecha)));
     if(!peds.length) return true;
     var d=diasDesde(peds[0].fecha);
     return d!==null&&d>=21;
@@ -2928,9 +2928,11 @@ function camposCl(pre){
     </div>`:""}
     <label style="display:flex;align-items:center;gap:10px;background:#F8FAFC;border:2px dashed #CBD5E1;border-radius:11px;padding:12px;cursor:pointer;">
       <span style="font-size:20px;">📷</span>
-      <span style="font-size:13px;color:#64748B;">${pre?.fotoLocal?"Cambiar foto":"Tomar foto o subir imagen"}</span>
-      <input id="cl_foto" type="file" accept="image/*" style="display:none;"/>
+      <span id="cl_foto_label" style="font-size:13px;color:#64748B;">${pre?.fotoLocal?"Cambiar foto":"Tomar foto o subir imagen"}</span>
+      <input id="cl_foto" type="file" accept="image/*" style="display:none;"
+        onchange="var r=new FileReader();r.onload=e=>{var lbl=$('cl_foto_label');if(lbl)lbl.textContent='✓ Foto lista';var prev=$('cl_foto_prev');if(prev){prev.src=e.target.result;prev.style.display='block';}};r.readAsDataURL(this.files[0]);"/>
     </label>
+    <img id="cl_foto_prev" src="" style="display:none;width:100%;max-height:120px;object-fit:cover;border-radius:11px;margin-top:8px;"/>
   </div>`;
 }
 
@@ -2958,7 +2960,8 @@ async function guardarNuevoCliente(){
     estado:"activo",pendiente:0,monto:0,ts:firebase.firestore.FieldValue.serverTimestamp()};
   try{
     var ref=await db.collection("clientes").add(data);
-    ST.clientes.push({id:ref.id,...data});
+    var {ts:_tsC,...dataLocalC}=data;
+    ST.clientes.push({id:ref.id,...dataLocalC});
     toast("✓ Cliente guardado",CG);setState({modal:null});
   }catch(e){toast("Error: "+e.message,CR);}
 }
@@ -2991,9 +2994,10 @@ async function actualizarCliente(id){
     ts:firebase.firestore.FieldValue.serverTimestamp()};
   try{
     await db.collection("clientes").doc(id).update(data);
+    var {ts:_tsU,...dataLocalU}=data;
     var idx=ST.clientes.findIndex(c=>c.id===id);
-    if(idx>=0) Object.assign(ST.clientes[idx],data);
-    if(ST.clienteActivo?.id===id) Object.assign(ST.clienteActivo,data);
+    if(idx>=0) Object.assign(ST.clientes[idx],dataLocalU);
+    if(ST.clienteActivo?.id===id) Object.assign(ST.clienteActivo,dataLocalU);
     toast("✓ Actualizado",CG);setState({modal:null});
   }catch(e){toast("Error: "+e.message,CR);}
 }
@@ -3133,7 +3137,8 @@ async function guardarNuevoProducto(){
     ts:firebase.firestore.FieldValue.serverTimestamp()};
   try{
     var ref=await db.collection("catalogo").add(data);
-    ST.catalogo.push({id:ref.id,...data});
+    var {ts:_tsP,...dataLocalP}=data;
+    ST.catalogo.push({id:ref.id,...dataLocalP});
     toast("✓ Producto guardado",CG);setState({modal:null});
   }catch(e){toast("Error: "+e.message,CR);}
 }
@@ -3164,8 +3169,9 @@ async function actualizarProducto(id){
     ts:firebase.firestore.FieldValue.serverTimestamp()};
   try{
     await db.collection("catalogo").doc(id).update(data);
+    var {ts:_tsPU,...dataLocalPU}=data;
     var idx=ST.catalogo.findIndex(p=>p.id===id);
-    if(idx>=0) Object.assign(ST.catalogo[idx],data);
+    if(idx>=0) Object.assign(ST.catalogo[idx],dataLocalPU);
     toast("✓ Actualizado",CG);setState({modal:null});
   }catch(e){toast("Error: "+e.message,CR);}
 }
@@ -3245,15 +3251,16 @@ async function guardarProspecto(){
     primerContacto:fmtF(),ts:firebase.firestore.FieldValue.serverTimestamp()};
   try{
     var ref=await db.collection("prospectos").add(data);
-    var pros={id:ref.id,...data};
-    ST.prospectos.push(pros);
+    var {ts:_tsPr,...dataLocalPr}=data;
+    ST.prospectos.push({id:ref.id,...dataLocalPr});
     // Auto-crear pendiente si se definió fecha de visita
     if(fechaVisita){
       var pData={tipo:"visita",descripcion:"Visita a prospecto: "+nombre,
         fecha:fechaVisita,prospectoId:ref.id,completado:false,
         creadoEn:fmtF(),ts:firebase.firestore.FieldValue.serverTimestamp()};
       var pRef=await db.collection("pendientes").add(pData);
-      ST.pendientes.unshift({id:pRef.id,...pData});
+      var {ts:_tsPd,...pDataLocal}=pData;
+      ST.pendientes.unshift({id:pRef.id,...pDataLocal});
       toast("✓ Prospecto guardado — pendiente de visita creado",CG);
     } else {
       toast("✓ Prospecto guardado",CG);
@@ -3358,6 +3365,7 @@ function mNuevaDev(){
     <div style="position:relative;">
       <input id="dv_cli" type="text" placeholder="Buscar cliente..." autocomplete="off"
         oninput="filtrarCliDev(this.value)"
+        onblur="setTimeout(()=>{var l=$('dv_cli_list');if(l)l.style.display='none';},150)"
         style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:14px;outline:none;"/>
       <div id="dv_cli_list" style="display:none;position:absolute;top:100%;left:0;right:0;
         background:${CW};border:2px solid #E2E8F0;border-top:none;
@@ -3414,7 +3422,10 @@ function mNuevaDev(){
   </div>
   <button onclick="guardarDev()"
     style="width:100%;background:${CG};border:none;border-radius:13px;padding:14px;
-    color:${CW};font-size:16px;font-weight:700;cursor:pointer;">✓ Guardar</button>`;
+    color:${CW};font-size:16px;font-weight:700;cursor:pointer;margin-bottom:8px;">✓ Guardar</button>
+  <button onclick="setState({modal:null})"
+    style="width:100%;background:none;border:2px solid #E2E8F0;border-radius:13px;padding:12px;
+    color:#64748B;font-size:14px;font-weight:600;cursor:pointer;">Cancelar</button>`;
 }
 
 async function guardarDev(){
@@ -3438,18 +3449,21 @@ async function guardarDev(){
     var ref=await db.collection("devoluciones").add(data);
     var {ts:_tsD,...dataLocal}=data;
     ST.devoluciones.unshift({id:ref.id,...dataLocal});
-    // Si Cambiado y reemplazo vale más → diferencia suma a cuenta del cliente
-    if(estado==="Cambiado"&&repVal>montoDevuelto+0.01){
-      var diferencia=repVal-montoDevuelto;
-      var c=ST.clientes.find(x=>x.nombre===cliente);
-      if(c){
-        var nPend=(parseFloat(c.pendiente)||0)+diferencia;
-        await db.collection("clientes").doc(c.id).update({pendiente:nPend});
-        c.pendiente=nPend;
-        toast("✓ Devolución registrada. Diferencia de "+fmtM(diferencia)+" sumada a cuenta de "+c.nombre,CG,5000);
+    var cDev=ST.clientes.find(x=>x.nombre===cliente);
+    if(cDev&&(estado==="Devuelto"||(estado==="Cambiado"&&Math.abs(repVal-montoDevuelto)>0.01))){
+      var nPend=parseFloat(cDev.pendiente)||0;
+      var delta=0;
+      if(estado==="Devuelto"){
+        delta=-montoDevuelto; // producto devuelto sin reemplazo → reduce deuda
       } else {
-        toast("✓ Devolución registrada. Nota: cliente no encontrado para actualizar deuda.",CA,5000);
+        delta=repVal-montoDevuelto; // Cambiado: positivo suma, negativo resta
       }
+      nPend=Math.max(0,nPend+delta);
+      await db.collection("clientes").doc(cDev.id).update({pendiente:nPend});
+      cDev.pendiente=nPend;
+      var msgDelta=delta>0?"Diferencia de "+fmtM(delta)+" sumada a cuenta":
+        delta<0?"Deuda reducida en "+fmtM(-delta):"";
+      toast("✓ Devolución registrada"+(msgDelta?". "+msgDelta:""),CG,5000);
     } else {
       toast("✓ Devolución registrada",CG);
     }
@@ -3541,7 +3555,7 @@ function htmlCartera(){
   // Sin comprar 21+ días
   var sinComprar21=ST.clientes.filter(c=>{
     if(c.estado==="inactivo")return false;
-    var peds=ST.pedidos.filter(p=>p.clienteId===c.id&&p.estado!=="cancelado");
+    var peds=ST.pedidos.filter(p=>p.clienteId===c.id&&p.estado!=="cancelado").sort((a,b)=>skF(b.fecha).localeCompare(skF(a.fecha)));
     if(!peds.length)return true;
     var d=diasDesde(peds[0].fecha);
     return d!==null&&d>=21;
@@ -3678,7 +3692,7 @@ function htmlCartera(){
       <div style="font-size:12px;font-weight:800;color:${CO};text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">
         ⏰ Sin comprar hace 21+ días (${sinComprar21.length})</div>
       ${sinComprar21.slice(0,5).map(c=>{
-        var peds=ST.pedidos.filter(p=>p.clienteId===c.id&&p.estado!=="cancelado");
+        var peds=ST.pedidos.filter(p=>p.clienteId===c.id&&p.estado!=="cancelado").sort((a,b)=>skF(b.fecha).localeCompare(skF(a.fecha)));
         var dias=peds.length?diasDesde(peds[0].fecha):null;
         return`<div style="display:flex;justify-content:space-between;align-items:center;
           padding:6px 0;border-bottom:1px solid #FED7AA;">
@@ -4185,7 +4199,10 @@ function mNuevoPendiente(){
   </div>
   <button onclick="guardarPendiente()"
     style="width:100%;background:${CG};border:none;border-radius:13px;padding:14px;
-    color:${CW};font-size:16px;font-weight:700;cursor:pointer;">✓ Guardar</button>`;
+    color:${CW};font-size:16px;font-weight:700;cursor:pointer;margin-bottom:8px;">✓ Guardar</button>
+  <button onclick="setState({modal:null})"
+    style="width:100%;background:none;border:2px solid #E2E8F0;border-radius:13px;padding:12px;
+    color:#64748B;font-size:14px;font-weight:600;cursor:pointer;">Cancelar</button>`;
 }
 
 function selTipoPend(btn,tipo){
@@ -4235,7 +4252,7 @@ function filtrarCliDev(v){
   var matches=ST.clientes.filter(c=>(c.nombre||"").toLowerCase().includes(q)||(c.encargado||"").toLowerCase().includes(q)).slice(0,8);
   if(!matches.length){list.style.display="none";return;}
   list.style.display="block";
-  list.innerHTML=matches.map(c=>`<div onclick="selCliDev('${h(c.nombre).replace(/'/g,"\\'")}')"
+  list.innerHTML=matches.map(c=>`<div data-nombre="${h(c.nombre)}" onclick="selCliDev(this.dataset.nombre)"
     style="padding:10px 12px;cursor:pointer;border-bottom:1px solid #F1F5F9;font-size:13px;color:#0F2240;font-weight:600;"
     onmouseover="this.style.background='#F1F5F9'" onmouseout="this.style.background=''">
     ${h(c.nombre)}${c.encargado?`<span style="color:#94A3B8;font-weight:400;font-size:11px;"> · ${h(c.encargado)}</span>`:""}
@@ -4732,7 +4749,7 @@ async function importarCatalogo(event){
       var prod={
         nombre,
         codigo:(row.codigo||row.Codigo||row.Código||"").toString().trim(),
-        categoria:(row.categoria||row.Categoria||row.Categoría||"").toString().trim(),
+        categoria:(row.categoria||row.Categoria||row.Categoría||"").toString().trim()||"General",
         sistema:(row.sistema||row.Sistema||"Perseo").toString().trim()||"Perseo",
         precioA:parseFloat(row.precioA||row.PrecioA||row.precio_a||0)||0,
         precioB:parseFloat(row.precioB||row.PrecioB||row.precio_b||0)||0,
@@ -4966,7 +4983,8 @@ async function guardarClienteDesdeProspecto(prospectoId){
     estado:"activo",pendiente:0,monto:0,ts:firebase.firestore.FieldValue.serverTimestamp()};
   try{
     var ref=await db.collection("clientes").add(data);
-    ST.clientes.push({id:ref.id,...data});
+    var {ts:_tsCp,...dataLocalCp}=data;
+    ST.clientes.push({id:ref.id,...dataLocalCp});
     await db.collection("prospectos").doc(prospectoId).update({estado:"✅ Convertido"});
     var pi=ST.prospectos.findIndex(x=>x.id===prospectoId);
     if(pi>=0)ST.prospectos[pi].estado="✅ Convertido";
