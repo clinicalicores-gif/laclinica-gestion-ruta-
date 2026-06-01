@@ -469,6 +469,10 @@ function htmlRuta(){
 
   var totalDeuda=lista.reduce((s,c)=>s+(c.pendiente||0),0);
   var conDeuda=lista.filter(c=>(c.pendiente||0)>0).length;
+  var set21=new Set(ST.clientes.filter(c=>{
+    var peds=ST.pedidos.filter(p=>p.clienteId===c.id&&p.estado!=="cancelado");
+    if(!peds.length)return true;var d=diasDesde(peds[0].fecha);return d!=null&&d>=21;
+  }).map(c=>c.id));
   var zonas=["Todos",...ZONAS];
   var diasFiltro=["Hoy","Todos","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"];
 
@@ -560,28 +564,28 @@ function htmlRuta(){
 
     <div style="display:flex;gap:7px;margin-bottom:10px;">
       <button onclick="setState({tab:'catalogo'})"
-        style="flex:2;background:${CB};border:none;border-radius:13px;padding:12px;
-        color:${CW};font-size:14px;font-weight:800;cursor:pointer;
-        display:flex;align-items:center;justify-content:center;gap:6px;">
-        🛒 Pedido
+        style="flex:1;background:${CB};border:none;border-radius:13px;padding:11px 8px;
+        color:${CW};font-size:11px;font-weight:800;cursor:pointer;
+        display:flex;flex-direction:column;align-items:center;gap:3px;">
+        <span style="font-size:18px;">📝</span>Nueva nota
       </button>
       <button onclick="setState({tab:'cobranza'})"
-        style="flex:1;background:#16A34A;border:none;border-radius:13px;padding:12px;
-        color:${CW};font-size:12px;font-weight:800;cursor:pointer;
-        display:flex;align-items:center;justify-content:center;gap:4px;">
-        💵
+        style="flex:1;background:#16A34A;border:none;border-radius:13px;padding:11px 8px;
+        color:${CW};font-size:11px;font-weight:800;cursor:pointer;
+        display:flex;flex-direction:column;align-items:center;gap:3px;">
+        <span style="font-size:18px;">💵</span>Nuevo cobro
       </button>
       <button onclick="setState({modal:{tipo:'nuevoPendiente'}})"
         style="flex:1;background:rgba(255,255,255,0.13);border:1px solid rgba(255,255,255,0.25);
-        border-radius:13px;padding:12px;color:${CW};font-size:12px;font-weight:700;cursor:pointer;
-        display:flex;align-items:center;justify-content:center;gap:4px;">
-        📋
+        border-radius:13px;padding:11px 8px;color:${CW};font-size:11px;font-weight:700;cursor:pointer;
+        display:flex;flex-direction:column;align-items:center;gap:3px;">
+        <span style="font-size:18px;">📋</span>Nuevo pendiente
       </button>
       <button onclick="abrirCierreDia()"
         style="flex:1;background:rgba(255,255,255,0.13);border:1px solid rgba(255,255,255,0.25);
-        border-radius:13px;padding:12px;color:${CW};font-size:12px;font-weight:700;cursor:pointer;
-        display:flex;align-items:center;justify-content:center;gap:4px;">
-        📊
+        border-radius:13px;padding:11px 8px;color:${CW};font-size:11px;font-weight:700;cursor:pointer;
+        display:flex;flex-direction:column;align-items:center;gap:3px;">
+        <span style="font-size:18px;">📊</span>Cerrar día
       </button>
     </div>
     ${(()=>{
@@ -607,6 +611,7 @@ function htmlRuta(){
       <span style="position:absolute;left:13px;top:50%;transform:translateY(-50%);font-size:15px;">🔍</span>
       <input id="s_ruta" type="text" placeholder="Buscar cliente o encargado..."
         value="${h(ST.search)}" oninput="debRuta(this.value)"
+        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
         style="width:100%;background:rgba(255,255,255,0.1);border:none;border-radius:11px;
         padding:11px 13px 11px 38px;color:${CW};font-size:14px;outline:none;"/>
     </div>
@@ -665,6 +670,7 @@ function htmlRuta(){
     ${lista.map(c=>{
       var activo=ST.clienteActivo?.id===c.id;
       var deuda=(c.pendiente||0);
+      var sinC21=set21.has(c.id);
       return`<div onclick="selCliente('${c.id}')"
         style="background:${activo?"#EFF6FF":CW};border:2px solid ${activo?CB:"transparent"};
         border-radius:15px;padding:13px;margin-bottom:9px;cursor:pointer;
@@ -683,8 +689,9 @@ function htmlRuta(){
           <div style="background:${CN};color:${CW};border-radius:7px;padding:2px 8px;
             font-size:11px;font-weight:700;">Tarifa ${h(c.precio||"C")}</div>
           ${deuda>0
-            ?`<div style="color:${CR};font-size:11px;font-weight:700;">Debe ${fmtM(deuda)}</div>`
+            ?`<span style="background:#FEE2E2;color:${CR};font-size:10px;font-weight:800;padding:2px 8px;border-radius:20px;display:inline-block;">💳 ${fmtM(deuda)}</span>`
             :`<div style="color:${CG};font-size:11px;font-weight:600;">Al día ✓</div>`}
+          ${sinC21?`<span style="background:#FEF9C3;color:#B45309;font-size:9px;font-weight:800;padding:2px 6px;border-radius:10px;display:inline-block;">+21d sin comprar</span>`:""}
           <button onclick="event.stopPropagation();abrirFichaCliente('${c.id}')"
             style="background:#F1F5F9;border:none;border-radius:7px;padding:3px 9px;
             font-size:10px;font-weight:700;color:#64748B;cursor:pointer;">📋 Ficha</button>
@@ -740,6 +747,7 @@ function htmlCatalogo(){
       <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:14px;">🔍</span>
       <input id="s_cat" type="text" placeholder="Buscar producto o código..."
         value="${h(ST.searchCat)}" oninput="debCat(this.value)"
+        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
         style="width:100%;background:rgba(255,255,255,0.1);border:none;border-radius:11px;
         padding:11px 12px 11px 36px;color:${CW};font-size:14px;outline:none;"/>
     </div>
@@ -867,7 +875,7 @@ function debRuta(v){
           <div style="background:${CN};color:${CW};border-radius:7px;padding:2px 8px;
             font-size:11px;font-weight:700;">Tarifa ${h(c.precio||"C")}</div>
           ${deuda>0
-            ?`<div style="color:${CR};font-size:11px;font-weight:700;">Debe ${fmtM(deuda)}</div>`
+            ?`<span style="background:#FEE2E2;color:${CR};font-size:10px;font-weight:800;padding:2px 8px;border-radius:20px;display:inline-block;">💳 ${fmtM(deuda)}</span>`
             :`<div style="color:${CG};font-size:11px;font-weight:600;">Al día ✓</div>`}
           <button onclick="event.stopPropagation();abrirFichaCliente('${c.id}')"
             style="background:#F1F5F9;border:none;border-radius:7px;padding:3px 9px;
@@ -1387,6 +1395,7 @@ function htmlCobranza(){
       <span style="position:absolute;left:11px;top:50%;transform:translateY(-50%);font-size:14px;">🔍</span>
       <input id="s_cobro" type="text" placeholder="Buscar cliente..."
         value="${h(ST.searchCobro)}" oninput="debCobro(this.value)"
+        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
         style="width:100%;background:rgba(255,255,255,0.15);border:none;border-radius:10px;
         padding:9px 12px 9px 34px;color:${CW};font-size:13px;outline:none;"/>
     </div>
@@ -1454,7 +1463,21 @@ function htmlMas(){
   <div style="font-size:20px;font-weight:800;color:${CN};">${h(nombre)}</div>
   <div style="font-size:12px;color:#64748B;margin-bottom:18px;">${h(rol)} · ${h(ST.user?.email||"")}</div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:14px;">
+    ${(()=>{var venc=ST.pendientes.filter(p=>!p.completado&&fechaPasada(p.fecha)).length;
+    return`<button onclick="setState({tab:'pendientes'})"
+      style="background:${CW};border:none;border-radius:14px;padding:15px;cursor:pointer;
+      text-align:left;box-shadow:0 1px 4px rgba(0,0,0,0.06);position:relative;">
+      ${venc>0?`<span style="position:absolute;top:8px;right:8px;background:${CR};color:${CW};
+        font-size:9px;font-weight:800;border-radius:10px;padding:2px 6px;">${venc}</span>`:""}
+      <div style="font-size:26px;margin-bottom:5px;">📋</div>
+      <div style="font-size:13px;font-weight:700;color:${CN};">Pendientes</div>
+    </button>`;})()}
+    ${masCard("🎯","Prospectos","prospectos")}
+    ${masCard("↩️","Devoluciones","devoluciones")}
+    ${masCard("💸","Gastos Ruta","gastos")}
+    ${masCard("📊","Balance","cartera")}
     ${masCard("💰","Cobros","cobranza")}
+    ${masCard("⚙️","Ajustes","ajustes")}
     ${masCard("📦","Pedidos","pedidos")}
     ${(()=>{var ep=ST.pedidos.filter(p=>p.estado==="despachado"&&p.factura).length;
     return`<button onclick="setState({tab:'entregas'})"
@@ -1465,22 +1488,8 @@ function htmlMas(){
       <div style="font-size:26px;margin-bottom:5px;">🚚</div>
       <div style="font-size:13px;font-weight:700;color:${CN};">Entregas</div>
     </button>`;})()}
-    ${masCard("📊","Balance","cartera")}
-    ${(()=>{var venc=ST.pendientes.filter(p=>!p.completado&&fechaPasada(p.fecha)).length;
-    return`<button onclick="setState({tab:'pendientes'})"
-      style="background:${CW};border:none;border-radius:14px;padding:15px;cursor:pointer;
-      text-align:left;box-shadow:0 1px 4px rgba(0,0,0,0.06);position:relative;">
-      ${venc>0?`<span style="position:absolute;top:8px;right:8px;background:${CR};color:${CW};
-        font-size:9px;font-weight:800;border-radius:10px;padding:2px 6px;">${venc}</span>`:""}
-      <div style="font-size:26px;margin-bottom:5px;">📋</div>
-      <div style="font-size:13px;font-weight:700;color:${CN};">Pendientes</div>
-    </button>`;})()}
     ${masCard("🏪","Clientes","cladmin")}
-    ${masCard("🎯","Prospectos","prospectos")}
-    ${masCard("↩️","Devoluciones","devoluciones")}
-    ${masCard("💸","Gastos Ruta","gastos")}
     ${masCard("🧴","Catálogo Admin","catalogo_admin")}
-    ${masCard("⚙️","Ajustes","ajustes")}
     ${(rol==="dueno"||rol==="admin")?masCard("👥","Usuarios","usuarios"):""}
   </div>
   <button onclick="abrirCierreDia()"
@@ -1553,6 +1562,7 @@ function htmlPedidos(){
     <div style="position:relative;">
       <span style="position:absolute;left:11px;top:50%;transform:translateY(-50%);font-size:13px;">🔍</span>
       <input id="s_ped_hist" type="text" placeholder="Buscar cliente o fecha..." value="${h(sq)}"
+        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
         oninput="setState({searchPedHist:this.value})"
         style="width:100%;border:2px solid #E2E8F0;border-radius:10px;padding:9px 12px 9px 33px;font-size:13px;outline:none;"/>
     </div>
@@ -1934,7 +1944,7 @@ function buildCladminCards(lista,inactivos21){
           ${c.cedula?`<div style="font-size:10px;color:#94A3B8;">CI: ${h(c.cedula)}</div>`:""}
         </div>
         <div style="text-align:right;flex-shrink:0;margin-left:10px;">
-          ${(c.pendiente||0)>0?`<div style="color:${CR};font-size:12px;font-weight:700;">${fmtM(c.pendiente)}</div>`:""}
+          ${(c.pendiente||0)>0?`<span style="background:#FEE2E2;color:${CR};font-size:10px;font-weight:800;padding:2px 8px;border-radius:20px;display:inline-block;margin-bottom:4px;">💳 ${fmtM(c.pendiente)}</span>`:""}
           <div style="display:flex;gap:5px;margin-top:5px;">
             <button onclick="editCl('${c.id}')"
               style="background:#F1F5F9;border:none;border-radius:7px;padding:5px 9px;font-size:12px;cursor:pointer;">✏️</button>
@@ -1967,6 +1977,7 @@ function htmlClientesAdmin(){
       <span style="position:absolute;left:11px;top:50%;transform:translateY(-50%);font-size:13px;">🔍</span>
       <input id="s_cladmin" type="text" placeholder="Buscar por nombre, encargado, zona..."
         value="${h(ST.searchClAdmin||"")}" oninput="debClAdmin(this.value)"
+        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
         style="width:100%;border:2px solid #E2E8F0;border-radius:10px;padding:9px 12px 9px 33px;font-size:13px;outline:none;"/>
     </div>
     <div style="overflow-x:auto;white-space:nowrap;">
@@ -2050,6 +2061,7 @@ function htmlProspectos(){
       <span style="position:absolute;left:11px;top:50%;transform:translateY(-50%);font-size:14px;">🔍</span>
       <input id="s_prosp" type="text" placeholder="Buscar prospecto..."
         value="${h(ST.searchProspecto||"")}" oninput="debProspecto(this.value)"
+        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
         style="width:100%;background:rgba(255,255,255,0.1);border:none;border-radius:10px;
         padding:10px 12px 10px 33px;color:${CW};font-size:13px;outline:none;"/>
     </div>
@@ -2110,7 +2122,14 @@ function htmlGastos(){
   var hoyStr=fmtF();
   var filtroG=ST.filtroGasto||"todos";
   var q=(ST.searchGasto||"").toLowerCase();
+  var now=new Date();
+  var mesNowG=now.getMonth()+1,anioNowG=now.getFullYear();
+  // Inicio de semana (lunes)
+  var dow=now.getDay();var lunesDate=new Date(now);lunesDate.setDate(now.getDate()-(dow===0?6:dow-1));
+  var lunesStr=`${String(lunesDate.getDate()).padStart(2,"0")}/${String(lunesDate.getMonth()+1).padStart(2,"0")}/${lunesDate.getFullYear()}`;
   var totalHoy=ST.gastos.filter(g=>g.fecha===hoyStr).reduce((s,g)=>s+(g.monto||0),0);
+  var totalSem=ST.gastos.filter(g=>{var pts=(g.fecha||"").split("/");if(pts.length!==3)return false;var d=new Date(parseInt(pts[2]),parseInt(pts[1])-1,parseInt(pts[0]));return d>=lunesDate&&d<=now;}).reduce((s,g)=>s+(g.monto||0),0);
+  var totalMes=ST.gastos.filter(g=>{var pts=(g.fecha||"").split("/");return pts.length===3&&parseInt(pts[1])===mesNowG&&parseInt(pts[2])===anioNowG;}).reduce((s,g)=>s+(g.monto||0),0);
   var pendReembolso=ST.gastos.filter(g=>g.reembolso&&g.reembolsoEstado!=="pagado").reduce((s,g)=>s+(g.monto||0),0);
   var lista=ST.gastos.filter(g=>{
     if(filtroG==="hoy"&&g.fecha!==hoyStr) return false;
@@ -2122,14 +2141,24 @@ function htmlGastos(){
   var chips=[["todos","Todos"],["hoy","Hoy"],["empresa","Empresa"],["reembolso","Reembolsables"]];
   return`<div class="fade">${subHeader("Gastos de Ruta","💸")}
   <div style="padding:14px 14px 80px;">
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
-      <div style="background:${CN};border-radius:13px;padding:13px;text-align:center;">
-        <div style="font-size:11px;color:rgba(255,255,255,0.65);">Gastos hoy</div>
-        <div style="font-size:22px;font-weight:800;color:${CW};">${fmtM(totalHoy)}</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px;">
+      <div style="background:${CN};border-radius:13px;padding:11px;text-align:center;">
+        <div style="font-size:10px;color:rgba(255,255,255,0.65);">Hoy</div>
+        <div style="font-size:18px;font-weight:800;color:${CW};">${fmtM(totalHoy)}</div>
       </div>
-      <div style="background:${pendReembolso>0?CA:CG};border-radius:13px;padding:13px;text-align:center;">
-        <div style="font-size:11px;color:rgba(255,255,255,0.65);">Pend. reembolso</div>
-        <div style="font-size:22px;font-weight:800;color:${CW};">${fmtM(pendReembolso)}</div>
+      <div style="background:#1E3A5F;border-radius:13px;padding:11px;text-align:center;">
+        <div style="font-size:10px;color:rgba(255,255,255,0.65);">Semana</div>
+        <div style="font-size:18px;font-weight:800;color:${CW};">${fmtM(totalSem)}</div>
+      </div>
+      <div style="background:#152C4A;border-radius:13px;padding:11px;text-align:center;">
+        <div style="font-size:10px;color:rgba(255,255,255,0.65);">Mes</div>
+        <div style="font-size:18px;font-weight:800;color:${CW};">${fmtM(totalMes)}</div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr;gap:8px;margin-bottom:12px;">
+      <div style="background:${pendReembolso>0?CA:CG};border-radius:13px;padding:11px;text-align:center;">
+        <div style="font-size:10px;color:rgba(255,255,255,0.65);">Pendiente reembolso</div>
+        <div style="font-size:18px;font-weight:800;color:${CW};">${fmtM(pendReembolso)}</div>
       </div>
     </div>
     <div style="overflow-x:auto;white-space:nowrap;margin-bottom:10px;">
@@ -2142,6 +2171,7 @@ function htmlGastos(){
       <span style="position:absolute;left:11px;top:50%;transform:translateY(-50%);font-size:14px;">🔍</span>
       <input id="s_gasto" type="text" placeholder="Buscar tipo o descripción..."
         value="${h(ST.searchGasto||"")}" oninput="debGasto(this.value)"
+        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
         style="width:100%;border:2px solid #E2E8F0;border-radius:10px;
         padding:10px 12px 10px 33px;font-size:13px;outline:none;"/>
     </div>
@@ -2213,6 +2243,7 @@ function htmlDevoluciones(){
       <span style="position:absolute;left:11px;top:50%;transform:translateY(-50%);font-size:14px;">🔍</span>
       <input id="s_dev" type="text" placeholder="Buscar por cliente o producto..."
         value="${h(ST.searchDev||"")}" oninput="debDev(this.value)"
+        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
         style="width:100%;border:2px solid #E2E8F0;border-radius:10px;
         padding:10px 12px 10px 33px;font-size:13px;outline:none;"/>
     </div>
@@ -2266,7 +2297,7 @@ function buildCatAdminCards(lista){
           style="background:${p.disponible==="Sin stock"?"#FEE2E2":"#DCFCE7"};border:none;border-radius:7px;
           padding:5px 9px;font-size:11px;font-weight:600;cursor:pointer;
           color:${p.disponible==="Sin stock"?CR:CG};">
-          ${p.disponible==="Sin stock"?"Sin stock":"OK"}</button>
+          ${p.disponible==="Sin stock"?"Inactivo":"Activo"}</button>
       </div>
     </div>
   </div>`).join("");
@@ -2287,6 +2318,7 @@ function htmlCatalogoAdmin(){
       <span style="position:absolute;left:11px;top:50%;transform:translateY(-50%);font-size:14px;">🔍</span>
       <input id="s_cat_admin" type="text" placeholder="Buscar producto o código..."
         value="${h(ST.searchCatAdmin||"")}" oninput="debCatAdmin(this.value)"
+        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
         style="width:100%;background:rgba(255,255,255,0.1);border:none;border-radius:10px;
         padding:10px 12px 10px 33px;color:${CW};font-size:13px;outline:none;"/>
     </div>
@@ -2434,19 +2466,20 @@ function mCobrarCliente(cId){
     <div style="font-size:13px;font-weight:700;color:${CR};margin-top:4px;">Total deuda: ${fmtM(totalPend)}</div>
   </div>
   <div id="cb6_facturas" style="margin-bottom:12px;">
-    ${pendientes.map(p=>`<label style="display:flex;align-items:center;gap:10px;
+    ${pendientes.map(p=>`<div onclick="toggleFacturaCobro(this)" data-id="${p.id}" data-saldo="${(p.saldoPendiente||0).toFixed(2)}" data-sel="0"
+      style="display:flex;align-items:center;gap:10px;
       padding:10px 12px;background:${CW};border-radius:11px;margin-bottom:7px;
-      border:2px solid #E2E8F0;cursor:pointer;">
-      <input type="checkbox" data-id="${p.id}" data-saldo="${(p.saldoPendiente||0).toFixed(2)}"
-        onchange="recalcularCobro6()"
-        style="width:18px;height:18px;accent-color:${CG};cursor:pointer;flex-shrink:0;"/>
+      border:2px solid #E2E8F0;cursor:pointer;transition:border-color 0.15s;">
+      <div class="cb6_circle" style="width:24px;height:24px;min-width:24px;border-radius:50%;
+        border:2px solid #CBD5E1;background:${CW};display:flex;align-items:center;
+        justify-content:center;font-size:13px;transition:all 0.15s;"></div>
       <div style="flex:1;min-width:0;">
         <div style="font-size:13px;font-weight:700;color:${CN};">
           ${p.factura?"Factura "+h(p.factura):fmtNota(p.numeroNota)}</div>
         <div style="font-size:11px;color:#64748B;">${h(p.fecha||"")} · ${h(p.sistema||"")}</div>
       </div>
       <div style="font-size:14px;font-weight:800;color:${CR};flex-shrink:0;">${fmtM(p.saldoPendiente)}</div>
-    </label>`).join("")}
+    </div>`).join("")}
   </div>
   <div style="background:#F0FDF4;border-radius:11px;padding:11px 14px;margin-bottom:14px;
     display:flex;justify-content:space-between;align-items:center;">
@@ -2492,11 +2525,25 @@ function setCb6Modo(modo){
   if(btnConf) btnConf.style.display="block";
   var hid=$("cb6_modo_hid");if(hid)hid.value=modo;
 }
+function toggleFacturaCobro(el){
+  var sel=el.dataset.sel==="1"?"0":"1";
+  el.dataset.sel=sel;
+  var circle=el.querySelector(".cb6_circle");
+  if(circle){
+    circle.style.background=sel==="1"?CG:CW;
+    circle.style.borderColor=sel==="1"?CG:"#CBD5E1";
+    circle.innerHTML=sel==="1"?`<svg width="12" height="12" viewBox="0 0 12 12"><polyline points="2,6 5,9 10,3" stroke="white" stroke-width="2" fill="none"/></svg>`:"";
+  }
+  el.style.borderColor=sel==="1"?CG:"#E2E8F0";
+  el.style.background=sel==="1"?"#F0FDF4":CW;
+  recalcularCobro6();
+}
 function recalcularCobro6(){
   var total=0;
-  document.querySelectorAll("#cb6_facturas input[type=checkbox]:checked")
+  document.querySelectorAll("#cb6_facturas [data-sel='1']")
     .forEach(c=>total+=parseFloat(c.dataset.saldo||0));
-  var el=$("cb6_total");if(el) el.textContent="$"+total.toFixed(2);
+  var el=$("cb6_total");
+  if(el){var v=total.toFixed(2);var p=v.split(".");el.textContent="$"+p[0].replace(/\B(?=(\d{3})+(?!\d))/g,",")+"."+p[1];}
 }
 function confirmarCb6(cId){
   var modo=$("cb6_modo_hid")?.value||"cobrar";
@@ -2506,7 +2553,7 @@ function confirmarCb6(cId){
 }
 async function procesarCobrarSel(cId){
   if(!cId){toast("Error: cliente no identificado",CR);return;}
-  var checks=[...document.querySelectorAll("#cb6_facturas input[type=checkbox]:checked")];
+  var checks=[...document.querySelectorAll("#cb6_facturas [data-sel='1']")];
   if(!checks.length){toast("Seleccioná al menos una factura",CA);return;}
   var totalCobrado=0;
   var updates=checks.map(c=>({id:c.dataset.id,saldo:parseFloat(c.dataset.saldo||0)}));
@@ -3013,7 +3060,8 @@ function camposProd(pre){
     <div style="flex:1;">
       <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Sistema</label>
       <select id="pd_sis" style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:14px;outline:none;background:${CW};">
-        <option${(pre?.sistema||"Perseo")==="Perseo"?" selected":""}>Perseo</option>
+        ${!pre?`<option value="">— Seleccionar *</option>`:""}
+        <option${pre?.sistema==="Perseo"?" selected":""}>Perseo</option>
         <option${pre?.sistema==="Importados"?" selected":""}>Importados</option>
       </select>
     </div>
@@ -3071,12 +3119,14 @@ function mNuevoProducto(){
 async function guardarNuevoProducto(){
   var nombre=val("pd_nom");
   if(!nombre){toast("El nombre es obligatorio",CR);return;}
+  var sistema=val("pd_sis");
+  if(!sistema){toast("El sistema (Perseo/Importados) es obligatorio",CR);return;}
   var stkRaw=val("pd_stock"),sminRaw=val("pd_smin");
   var data={codigo:val("pd_cod"),nombre,categoria:val("pd_cat")||"General",
     costo:parseFloat(val("pd_costo")||0),
     precioA:parseFloat(val("pd_pA")||0),precioB:parseFloat(val("pd_pB")||0),
     precioC:parseFloat(val("pd_pC")||0),precioD:parseFloat(val("pd_pD")||0),
-    sistema:val("pd_sis")||"Perseo",disponible:"Disponible",
+    sistema,disponible:"Disponible",
     stockActual:stkRaw!==""?parseInt(stkRaw):null,
     stockMinimo:sminRaw!==""?parseInt(sminRaw):null,
     ultimaActualizacion:fmtF(),
@@ -3305,9 +3355,15 @@ function mNuevaDev(){
   </div>
   <div style="margin-bottom:12px;">
     <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Cliente *</label>
-    <input id="dv_cli" type="text" placeholder="Nombre del negocio" list="dv_cli_list"
-      style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:14px;outline:none;"/>
-    <datalist id="dv_cli_list">${nombresClientes.map(n=>`<option value="${h(n)}">`).join("")}</datalist>
+    <div style="position:relative;">
+      <input id="dv_cli" type="text" placeholder="Buscar cliente..." autocomplete="off"
+        oninput="filtrarCliDev(this.value)"
+        style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:14px;outline:none;"/>
+      <div id="dv_cli_list" style="display:none;position:absolute;top:100%;left:0;right:0;
+        background:${CW};border:2px solid #E2E8F0;border-top:none;
+        border-radius:0 0 11px 11px;z-index:200;max-height:180px;overflow-y:auto;
+        box-shadow:0 4px 12px rgba(0,0,0,0.12);"></div>
+    </div>
   </div>
   <div style="margin-bottom:12px;">
     <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Producto devuelto *</label>
@@ -3871,7 +3927,7 @@ function buildPendCards(q){
             ${(p.tipo==="cobro"||p.tipo==="acuerdo")?`<button onclick="setState({tab:'cobranza',searchCobro:'${h(c.nombre)}'})"
               style="background:#FFFBEB;border:1px solid ${CA};border-radius:6px;
               padding:2px 7px;color:${CA};font-size:10px;font-weight:700;cursor:pointer;">Ver cuenta</button>`:""}
-            ${deudaCliente>0.01?`<span style="color:${CR};font-size:11px;font-weight:700;">Debe ${fmtM(deudaCliente)}</span>`:""}
+            ${deudaCliente>0.01?`<span style="background:#FEE2E2;color:${CR};font-size:10px;font-weight:800;padding:2px 8px;border-radius:20px;">💳 ${fmtM(deudaCliente)}</span>`:""}
           </div>`:""}
         </div>
       </div>
@@ -3927,6 +3983,7 @@ function htmlPendientes(){
     <div style="position:relative;">
       <span style="position:absolute;left:11px;top:50%;transform:translateY(-50%);font-size:13px;">🔍</span>
       <input id="s_pend" type="text" placeholder="Buscar pendiente..." value="${h(q)}" oninput="debPend(this.value)"
+        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
         style="width:100%;border:2px solid #E2E8F0;border-radius:10px;padding:9px 12px 9px 33px;font-size:13px;outline:none;"/>
     </div>
   </div>
@@ -4169,6 +4226,26 @@ async function guardarPendiente(){
     ST.pendientes.unshift({id:ref.id,...dataLocal});
     toast("✓ Pendiente guardado",CG);setState({modal:null});
   }catch(e){toast("Error: "+e.message,CR);}
+}
+function filtrarCliDev(v){
+  var list=$("dv_cli_list");
+  if(!list)return;
+  if(!v){list.style.display="none";return;}
+  var q=v.toLowerCase();
+  var matches=ST.clientes.filter(c=>(c.nombre||"").toLowerCase().includes(q)||(c.encargado||"").toLowerCase().includes(q)).slice(0,8);
+  if(!matches.length){list.style.display="none";return;}
+  list.style.display="block";
+  list.innerHTML=matches.map(c=>`<div onclick="selCliDev('${h(c.nombre).replace(/'/g,"\\'")}')"
+    style="padding:10px 12px;cursor:pointer;border-bottom:1px solid #F1F5F9;font-size:13px;color:#0F2240;font-weight:600;"
+    onmouseover="this.style.background='#F1F5F9'" onmouseout="this.style.background=''">
+    ${h(c.nombre)}${c.encargado?`<span style="color:#94A3B8;font-weight:400;font-size:11px;"> · ${h(c.encargado)}</span>`:""}
+  </div>`).join("");
+}
+function selCliDev(nombre){
+  var inp=$("dv_cli");
+  var list=$("dv_cli_list");
+  if(inp) inp.value=nombre;
+  if(list) list.style.display="none";
 }
 function filtrarCliPend(v){
   var list=$("pend_cli_list");
@@ -4670,16 +4747,14 @@ async function importarCatalogo(event){
       if(count%400===0){await batch.commit();batch=db.batch();}
     }
     await batch.commit();
-    var resEl=$("imp_cat_res")||$("imp_cat_res2");
-    if(resEl)resEl.innerHTML=`✅ ${ok} productos importados${err?" · ⚠️ "+err+" filas sin nombre":""}.`;
+    if(res)res.innerHTML=`✅ ${ok} productos importados${err?" · ⚠️ "+err+" filas sin nombre":""}.`;
     toast("✓ "+ok+" productos importados al catálogo",CG,5000);
     var snap=await db.collection("catalogo").get();
     ST.catalogo=snap.docs.map(d=>({id:d.id,...d.data()}));
     event.target.value="";
     render();
   }catch(e){
-    var resEl2=$("imp_cat_res")||$("imp_cat_res2");
-    if(resEl2)resEl2.innerHTML="❌ Error: "+e.message;
+    if(res)res.innerHTML="❌ Error: "+e.message;
     toast("Error al importar: "+e.message,CR,7000);
   }
 }
@@ -4804,13 +4879,15 @@ function mCierreDia(){
   var gastosHoy=ST.gastos.filter(g=>g.fecha===hoyStr).reduce((s,g)=>s+(g.monto||0),0);
   var utilidad=ventasHoy-gastosHoy;
   var clientesUnicos=new Set(pedidosHoy.map(p=>p.clienteId).filter(Boolean)).size;
+  var entregasPend=ST.pedidos.filter(p=>p.estado==="despachado").length;
   var filas=[
     ["🏪 Clientes visitados",String(clientesUnicos)],
     ["📋 Notas de venta",String(pedidosHoy.length)],
     ["💰 Total vendido",fmtM(ventasHoy)],
     ["💵 Total cobrado",fmtM(cobradoHoy)],
     ["💸 Gastos del día",fmtM(gastosHoy)],
-    ["✨ Utilidad estimada",fmtM(utilidad)]
+    ["✨ Utilidad estimada",fmtM(utilidad)],
+    ["🚚 Entregas pendientes",String(entregasPend)]
   ];
   var nombre=getNombre();
   return`${mHeader("Cierre del Día — "+hoyStr)}
@@ -4842,13 +4919,15 @@ function compartirCierreDiaWA(){
   var utilidad=ventasHoy-gastosHoy;
   var clientesUnicos=new Set(pedidosHoy.map(p=>p.clienteId).filter(Boolean)).size;
   var nombre=getNombre();
+  var entregasPendWA=ST.pedidos.filter(p=>p.estado==="despachado").length;
   var msg="REPORTE DEL DÍA — "+hoyStr+"\nVendedor: "+nombre+
     "\n\nClientes visitados: "+clientesUnicos+
     "\nNotas de venta: "+pedidosHoy.length+
     "\nTotal vendido: "+fmtM(ventasHoy)+
     "\nTotal cobrado: "+fmtM(cobradoHoy)+
     "\nGastos: "+fmtM(gastosHoy)+
-    "\nUtilidad estimada: "+fmtM(utilidad);
+    "\nUtilidad estimada: "+fmtM(utilidad)+
+    "\nEntregas pendientes: "+entregasPendWA;
   window.open("https://wa.me/?text="+encodeURIComponent(msg),"_blank");
 }
 
