@@ -3990,17 +3990,42 @@ ${(cfg.categoriasPersonalizadas||CATS).join("\n")}</textarea>
     </div>
 
     <div style="background:#FEF2F2;border:2px solid #FECACA;border-radius:14px;padding:16px;">
-      <div style="font-size:13px;font-weight:700;color:${CR};margin-bottom:4px;">⚠️ Zona de Peligro</div>
-      <div style="font-size:12px;color:#64748B;margin-bottom:12px;">
-        <b>Limpiar todo:</b> borra pedidos, clientes, productos, cobros, gastos, pendientes, prospectos y devoluciones de la nube. La configuración (nombre, metas, comisión, WhatsApp) se conserva.<br><br>
-        <b>Limpiar locales:</b> solo limpia configuración del dispositivo (nombre, metas, nota correlativa).
+      <div style="font-size:13px;font-weight:700;color:${CR};margin-bottom:10px;">⚠️ Zona de Peligro</div>
+
+      <div style="margin-bottom:8px;">
+        <button onclick="borrarDatosPrueba()"
+          style="width:100%;background:#FEF2F2;border:1px solid #FECACA;border-radius:9px;
+          padding:10px 12px;color:#B91C1C;font-weight:700;cursor:pointer;font-size:12px;text-align:left;">
+          🧹 Limpiar datos de prueba
+          <span style="display:block;font-size:10px;font-weight:400;color:#94A3B8;margin-top:2px;">
+            Borra pedidos, gastos, pendientes, devoluciones y prospectos. Conserva clientes, catálogo y configuración.</span>
+        </button>
       </div>
-      <button onclick="borrarTodosLosData()"
-        style="width:100%;background:${CR};border:none;border-radius:10px;padding:13px;
-        color:${CW};font-weight:700;cursor:pointer;font-size:14px;margin-bottom:8px;">🗑️ Limpiar TODOS los datos de la app</button>
+
+      <div style="margin-bottom:8px;">
+        <button onclick="borrarTodoExceptoCatalogo()"
+          style="width:100%;background:#FEF2F2;border:1px solid #FECACA;border-radius:9px;
+          padding:10px 12px;color:#B91C1C;font-weight:700;cursor:pointer;font-size:12px;text-align:left;">
+          🗂️ Limpiar todo excepto catálogo
+          <span style="display:block;font-size:10px;font-weight:400;color:#94A3B8;margin-top:2px;">
+            Borra todo menos el catálogo de productos y la configuración.</span>
+        </button>
+      </div>
+
+      <div style="margin-bottom:12px;">
+        <button onclick="borrarTodosLosData()"
+          style="width:100%;background:#FEF2F2;border:1px solid #FECACA;border-radius:9px;
+          padding:10px 12px;color:#B91C1C;font-weight:700;cursor:pointer;font-size:12px;text-align:left;">
+          💣 Limpiar todo
+          <span style="display:block;font-size:10px;font-weight:400;color:#94A3B8;margin-top:2px;">
+            Borra absolutamente todos los datos de la nube. Solo conserva la configuración.</span>
+        </button>
+      </div>
+
       <button onclick="limpiarDatosLocales()"
-        style="width:100%;background:none;border:2px solid ${CR};border-radius:10px;padding:12px;
-        color:${CR};font-weight:700;cursor:pointer;font-size:13px;margin-bottom:8px;">🗑️ Limpiar solo datos locales</button>
+        style="width:100%;background:none;border:1px solid #E2E8F0;border-radius:9px;padding:9px;
+        color:#94A3B8;font-weight:600;cursor:pointer;font-size:11px;margin-bottom:8px;">
+        🗑️ Limpiar solo datos locales del dispositivo</button>
       <button onclick="cerrarSesionForzado()"
         style="width:100%;background:none;border:2px solid #64748B;border-radius:10px;padding:12px;
         color:#64748B;font-weight:700;cursor:pointer;font-size:14px;">🚪 Cerrar sesión</button>
@@ -4174,24 +4199,65 @@ function limpiarDatosLocales(){
   toast("✓ Datos locales limpiados",CA);render();
 }
 
-async function borrarTodosLosData(){
-  if(!confirm("⚠️ BORRAR TODOS LOS DATOS DE LA APP\n\nSe eliminarán permanentemente:\n• Pedidos y cobros\n• Clientes y rutas\n• Productos del catálogo\n• Gastos de ruta\n• Devoluciones\n• Pendientes y acuerdos\n• Prospectos\n\nLa configuración (nombre, metas, comisión, WhatsApp de bodega) SE CONSERVARÁ.\n\n¿Continuar?")) return;
-  if(!confirm("🚨 CONFIRMACIÓN FINAL\n\nEsta acción es IRREVERSIBLE y borrará todo el historial de la empresa de la nube.\n\n¿Estás completamente seguro?")) return;
-  var cfg=getConfig();
-  toast("Borrando datos...",CA,60000);
+async function _eliminarColecciones(cols){
+  for(var col of cols){
+    var snap=await db.collection(col).get();
+    var i=0,batch=db.batch();
+    for(var doc of snap.docs){
+      batch.delete(doc.ref);i++;
+      if(i===450){await batch.commit();batch=db.batch();i=0;}
+    }
+    if(i>0) await batch.commit();
+  }
+}
+
+async function borrarDatosPrueba(){
+  if(!confirm("🧹 LIMPIAR DATOS DE PRUEBA\n\nSe borrarán permanentemente:\n• Pedidos y cobros\n• Entregas\n• Pendientes y acuerdos\n• Gastos de ruta\n• Devoluciones\n• Prospectos\n\nNO se tocarán: clientes, catálogo, rutas ni configuración.\n\n¿Continuar?")) return;
+  if(!confirm("⚠️ Confirmación final — se borrarán los datos de prueba. Esta acción es IRREVERSIBLE.\n\n¿Estás seguro?")) return;
+  toast("Borrando datos de prueba...",CA,60000);
   try{
-    var cols=["pedidos","clientes","catalogo","prospectos","gastos","devoluciones","pendientes"];
-    for(var col of cols){
-      var snap=await db.collection(col).get();
-      var i=0;
-      var batch=db.batch();
-      for(var doc of snap.docs){
-        batch.delete(doc.ref);
-        i++;
+    await _eliminarColecciones(["pedidos","pendientes","gastos","devoluciones","prospectos"]);
+    var batch=db.batch();var i=0;
+    for(var c of ST.clientes){
+      if((c.pendiente||0)!==0){
+        batch.update(db.collection("clientes").doc(c.id),{pendiente:0});i++;
         if(i===450){await batch.commit();batch=db.batch();i=0;}
       }
-      if(i>0) await batch.commit();
     }
+    if(i>0) await batch.commit();
+    ST.pedidos=[];ST.pendientes=[];ST.gastos=[];ST.devoluciones=[];ST.prospectos=[];
+    ST.clientes=ST.clientes.map(c=>({...c,pendiente:0}));
+    ST.clienteActivo=ST.clienteActivo?{...ST.clienteActivo,pendiente:0}:null;
+    ST.carrito=[];
+    localStorage.removeItem("lc_carrito");localStorage.removeItem("lc_cliente");
+    localStorage.removeItem("vr_ultimo_numero_nota");
+    toast("✓ Datos de prueba eliminados. Clientes y catálogo intactos.",CG,5000);render();
+  }catch(e){toast("Error: "+e.message,CR);}
+}
+
+async function borrarTodoExceptoCatalogo(){
+  if(!confirm("🗂️ LIMPIAR TODO EXCEPTO CATÁLOGO\n\nSe borrarán permanentemente:\n• Pedidos y cobros\n• Clientes y rutas\n• Gastos de ruta\n• Devoluciones\n• Pendientes y acuerdos\n• Prospectos\n\nNO se tocará el catálogo de productos ni la configuración.\n\n¿Continuar?")) return;
+  if(!confirm("⚠️ Confirmación final — esta acción es IRREVERSIBLE.\n\n¿Estás completamente seguro?")) return;
+  var cfg=getConfig();
+  toast("Borrando...",CA,60000);
+  try{
+    await _eliminarColecciones(["pedidos","clientes","pendientes","gastos","devoluciones","prospectos"]);
+    ST.pedidos=[];ST.clientes=[];ST.pendientes=[];ST.gastos=[];ST.devoluciones=[];ST.prospectos=[];
+    ST.clienteActivo=null;ST.carrito=[];
+    localStorage.removeItem("lc_carrito");localStorage.removeItem("lc_cliente");
+    localStorage.removeItem("vr_ultimo_numero_nota");
+    saveConfig(cfg);
+    toast("✓ Borrado. Catálogo y configuración conservados.",CG,5000);render();
+  }catch(e){toast("Error: "+e.message,CR);}
+}
+
+async function borrarTodosLosData(){
+  if(!confirm("💣 BORRAR TODO\n\nSe eliminarán permanentemente:\n• Pedidos y cobros\n• Clientes y rutas\n• Catálogo de productos\n• Gastos de ruta\n• Devoluciones\n• Pendientes y acuerdos\n• Prospectos\n\nLa configuración (nombre, metas, comisión, WhatsApp) SE CONSERVARÁ.\n\n¿Continuar?")) return;
+  if(!confirm("🚨 CONFIRMACIÓN FINAL — Esta acción es IRREVERSIBLE.\n\n¿Estás completamente seguro?")) return;
+  var cfg=getConfig();
+  toast("Borrando todo...",CA,60000);
+  try{
+    await _eliminarColecciones(["pedidos","clientes","catalogo","prospectos","gastos","devoluciones","pendientes"]);
     ST.pedidos=[];ST.clientes=[];ST.catalogo=[];
     ST.prospectos=[];ST.gastos=[];ST.devoluciones=[];
     ST.pendientes=[];ST.clienteActivo=null;ST.carrito=[];
