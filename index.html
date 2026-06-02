@@ -20,7 +20,7 @@ button:active{opacity:0.82;transform:scale(0.97);}
 ::-webkit-scrollbar-thumb{background:#CBD5E1;border-radius:4px;}
 @media(min-width:768px){
   body{background:#CBD5E1;}
-  #root{max-width:440px;margin:0 auto;background:#F1F5F9;min-height:100vh;box-shadow:0 0 40px rgba(0,0,0,0.15);}
+  #root{max-width:none;margin:0;background:#F1F5F9;min-height:100vh;box-shadow:none;}
 }
 input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;}
 </style>
@@ -185,8 +185,14 @@ function loadCart(){
 function buildHTML(){
   if(ST.loading) return htmlSplash();
   if(!ST.user)   return htmlLogin();
-  return htmlApp();
+  return window.innerWidth>=768 ? htmlAppDesktop() : htmlAppMobile();
 }
+var _prevDesk=null;
+window.addEventListener("resize",function(){
+  var d=window.innerWidth>=768;
+  if(d!==_prevDesk&&_prevDesk!==null&&ST.user&&!ST.loading){render();}
+  _prevDesk=d;
+});
 
 function htmlSplash(){
   return`<div style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:${CN};">
@@ -234,8 +240,113 @@ async function hacerLogin(){
   catch(err){var el=$("li_err");if(el)el.textContent="Email o contraseña incorrectos.";}
 }
 
-// ── APP SHELL ─────────────────────────────────────────────────────
-function htmlApp(){
+// ── APP SHELL — DESKTOP ───────────────────────────────────────────
+function htmlAppDesktop(){
+  var tab=ST.tab;
+  var nCart=ST.carrito.reduce((s,i)=>s+i.cantidad,0);
+  var rol=getRol();
+  var pendEnt=ST.pedidos.filter(p=>p.estado==="despachado"&&p.factura&&(!p.entrega||p.entrega.estado!=="entregado")).length;
+  var pendCobro=ST.pedidos.filter(p=>p.estadoCobro!=="cobrado"&&p.estadoCobro!=="cancelado"&&(p.saldoPendiente||0)>0).length;
+  var vencPend=ST.pendientes.filter(p=>!p.completado&&fechaPasada(p.fecha)).length;
+  var devPend=ST.devoluciones.filter(d=>d.estado==="pendiente"||d.estado==="Pendiente"||d.estado==="proceso").length;
+  function sl(t,icon,label,badge){
+    var active=tab===t;
+    return`<button onclick="setState({tab:'${t}'})"
+      style="display:flex;align-items:center;gap:10px;width:100%;padding:9px 12px;
+      border:none;border-radius:9px;cursor:pointer;margin-bottom:1px;text-align:left;
+      background:${active?CN:"transparent"};color:${active?CW:"#475569"};">
+      <span style="font-size:17px;line-height:1;">${icon}</span>
+      <span style="font-size:13px;font-weight:${active?"700":"500"};flex:1;">${label}</span>
+      ${badge?`<span style="background:${active?"rgba(255,255,255,0.25)":CR};color:${CW};
+        font-size:10px;font-weight:800;border-radius:10px;padding:1px 6px;min-width:16px;
+        text-align:center;">${badge}</span>`:""}
+    </button>`;
+  }
+  function seccion(label){
+    return`<div style="font-size:10px;font-weight:700;color:#94A3B8;text-transform:uppercase;
+      letter-spacing:0.6px;padding:12px 12px 4px;">${label}</div>`;
+  }
+  var sidebar=`<div style="position:fixed;left:0;top:0;bottom:0;width:228px;
+    background:${CW};border-right:1px solid #E2E8F0;display:flex;flex-direction:column;
+    z-index:50;overflow-y:auto;">
+    <div style="padding:18px 16px 14px;border-bottom:1px solid #F1F5F9;">
+      <div style="font-size:20px;font-weight:900;color:${CN};">🥃 La Clínica</div>
+      <div style="font-size:11px;color:#94A3B8;margin-top:1px;">Gestión de Ruta</div>
+    </div>
+    ${ST.clienteActivo?`<div style="padding:10px 14px 8px;background:#EFF6FF;border-bottom:1px solid #DBEAFE;">
+      <div style="font-size:10px;color:${CB};text-transform:uppercase;font-weight:700;letter-spacing:0.4px;">Cliente activo</div>
+      <div style="font-size:13px;font-weight:700;color:${CN};margin-top:2px;">${h(ST.clienteActivo.nombre)}</div>
+      ${(ST.clienteActivo.pendiente||0)>0?`<div style="font-size:11px;color:${CR};font-weight:600;">Debe ${fmtM(ST.clienteActivo.pendiente)}</div>`:""}
+      <button onclick="limpiarCliente()"
+        style="font-size:11px;color:#94A3B8;background:none;border:none;cursor:pointer;padding:3px 0;margin-top:2px;">
+        ✕ Cambiar cliente</button>
+    </div>`:""}
+    <div style="padding:8px;flex:1;">
+      ${seccion("Principal")}
+      ${sl("ruta","🗺️","Mi Ruta")}
+      ${sl("catalogo","🧴","Catálogo",nCart>0?nCart:"")}
+      ${sl("carrito","🛒","Carrito",nCart>0?nCart:"")}
+      ${sl("cobranza","💰","Cobros",pendCobro>0?pendCobro:"")}
+      ${seccion("Gestión")}
+      ${sl("pedidos","📦","Pedidos")}
+      ${sl("entregas","🚚","Entregas",pendEnt>0?pendEnt:"")}
+      ${sl("cartera","📊","Balance")}
+      ${sl("pendientes","📋","Pendientes",vencPend>0?vencPend:"")}
+      ${seccion("Administración")}
+      ${sl("cladmin","🏪","Clientes")}
+      ${sl("prospectos","🎯","Prospectos")}
+      ${sl("devoluciones","↩️","Devoluciones",devPend>0?devPend:"")}
+      ${sl("gastos","💸","Gastos Ruta")}
+      ${sl("catalogo_admin","🧴","Catálogo Admin")}
+      ${sl("ajustes","⚙️","Ajustes")}
+      ${(rol==="dueno"||rol==="admin")?sl("usuarios","👥","Usuarios"):""}
+    </div>
+    <div style="padding:12px 14px;border-top:1px solid #F1F5F9;">
+      <div style="font-size:12px;font-weight:700;color:${CN};margin-bottom:1px;">${h(getNombre())}</div>
+      <div style="font-size:11px;color:#94A3B8;">${h(rol)} · ${h(ST.user?.email||"")}</div>
+      <div style="display:flex;gap:6px;margin-top:8px;">
+        <button onclick="abrirCierreDia()"
+          style="flex:1;background:#F1F5F9;border:none;border-radius:8px;padding:7px 4px;
+          font-size:11px;font-weight:700;color:${CN};cursor:pointer;">📊 Cierre</button>
+        <button onclick="auth.signOut()"
+          style="flex:1;background:#FEF2F2;border:none;border-radius:8px;padding:7px 4px;
+          font-size:11px;font-weight:700;color:${CR};cursor:pointer;">🚪 Salir</button>
+      </div>
+    </div>
+  </div>`;
+
+  return`<div style="display:flex;min-height:100vh;background:#F1F5F9;">
+    ${sidebar}
+    <div style="margin-left:228px;flex:1;min-height:100vh;overflow-y:auto;">
+      ${ST.toast?`<div id="toast_el" style="position:fixed;top:16px;left:50%;transform:translateX(-50%);
+        background:${ST.toast.color};color:${CW};padding:11px 20px;border-radius:12px;
+        font-weight:700;font-size:13px;z-index:9999;max-width:340px;text-align:center;
+        box-shadow:0 4px 20px rgba(0,0,0,0.22);">${h(ST.toast.msg)}</div>`:`<div id="toast_el" style="display:none;"></div>`}
+      <div style="max-width:860px;margin:0 auto;">
+        ${tab==="ruta"           ? htmlRuta()           : ""}
+        ${tab==="catalogo"       ? htmlCatalogo()       : ""}
+        ${tab==="carrito"        ? htmlCarrito()        : ""}
+        ${tab==="cobranza"       ? htmlCobranza()       : ""}
+        ${tab==="pedidos"        ? htmlPedidos()        : ""}
+        ${tab==="cladmin"        ? htmlClientesAdmin()  : ""}
+        ${tab==="prospectos"     ? htmlProspectos()     : ""}
+        ${tab==="gastos"         ? htmlGastos()         : ""}
+        ${tab==="devoluciones"   ? htmlDevoluciones()   : ""}
+        ${tab==="catalogo_admin" ? htmlCatalogoAdmin()  : ""}
+        ${tab==="cartera"        ? htmlCartera()        : ""}
+        ${tab==="pendientes"     ? htmlPendientes()     : ""}
+        ${tab==="ajustes"        ? htmlAjustes()        : ""}
+        ${tab==="usuarios"       ? ((rol==="dueno"||rol==="admin")?htmlUsuarios():`<div style="padding:48px 20px;text-align:center;color:#94A3B8;">Acceso restringido</div>`) : ""}
+        ${tab==="entregas"       ? htmlEntregas()       : ""}
+        ${tab==="mas"            ? htmlMas()            : ""}
+      </div>
+    </div>
+    ${ST.modal ? htmlModal() : ""}
+  </div>`;
+}
+
+// ── APP SHELL — MOBILE ────────────────────────────────────────────
+function htmlAppMobile(){
   var tab=ST.tab;
   var nCart=ST.carrito.reduce((s,i)=>s+i.cantidad,0);
   var rol=getRol();
@@ -3880,10 +3991,16 @@ ${(cfg.categoriasPersonalizadas||CATS).join("\n")}</textarea>
 
     <div style="background:#FEF2F2;border:2px solid #FECACA;border-radius:14px;padding:16px;">
       <div style="font-size:13px;font-weight:700;color:${CR};margin-bottom:4px;">⚠️ Zona de Peligro</div>
-      <div style="font-size:12px;color:#64748B;margin-bottom:12px;">Limpia los datos guardados localmente (configuración y notas correlativas). Los datos en la nube no se borran.</div>
+      <div style="font-size:12px;color:#64748B;margin-bottom:12px;">
+        <b>Limpiar todo:</b> borra pedidos, clientes, productos, cobros, gastos, pendientes, prospectos y devoluciones de la nube. La configuración (nombre, metas, comisión, WhatsApp) se conserva.<br><br>
+        <b>Limpiar locales:</b> solo limpia configuración del dispositivo (nombre, metas, nota correlativa).
+      </div>
+      <button onclick="borrarTodosLosData()"
+        style="width:100%;background:${CR};border:none;border-radius:10px;padding:13px;
+        color:${CW};font-weight:700;cursor:pointer;font-size:14px;margin-bottom:8px;">🗑️ Limpiar TODOS los datos de la app</button>
       <button onclick="limpiarDatosLocales()"
         style="width:100%;background:none;border:2px solid ${CR};border-radius:10px;padding:12px;
-        color:${CR};font-weight:700;cursor:pointer;font-size:14px;margin-bottom:8px;">🗑️ Limpiar datos locales</button>
+        color:${CR};font-weight:700;cursor:pointer;font-size:13px;margin-bottom:8px;">🗑️ Limpiar solo datos locales</button>
       <button onclick="cerrarSesionForzado()"
         style="width:100%;background:none;border:2px solid #64748B;border-radius:10px;padding:12px;
         color:#64748B;font-weight:700;cursor:pointer;font-size:14px;">🚪 Cerrar sesión</button>
@@ -4052,9 +4169,39 @@ function exportarExcel(){
 function limpiarDatosLocales(){
   if(!confirm("¿Limpiar configuración local (nombre, metas, nota correlativa)?")) return;
   if(!confirm("⚠️ Confirmación final — se perderán ajustes locales.")) return;
-  ["vr_config","vr_ultimo_numero_nota","lc_carrito","lc_cliente","lc_sistema"]
+  ["vr_ultimo_numero_nota","lc_carrito","lc_cliente","lc_sistema"]
     .forEach(k=>localStorage.removeItem(k));
   toast("✓ Datos locales limpiados",CA);render();
+}
+
+async function borrarTodosLosData(){
+  if(!confirm("⚠️ BORRAR TODOS LOS DATOS DE LA APP\n\nSe eliminarán permanentemente:\n• Pedidos y cobros\n• Clientes y rutas\n• Productos del catálogo\n• Gastos de ruta\n• Devoluciones\n• Pendientes y acuerdos\n• Prospectos\n\nLa configuración (nombre, metas, comisión, WhatsApp de bodega) SE CONSERVARÁ.\n\n¿Continuar?")) return;
+  if(!confirm("🚨 CONFIRMACIÓN FINAL\n\nEsta acción es IRREVERSIBLE y borrará todo el historial de la empresa de la nube.\n\n¿Estás completamente seguro?")) return;
+  var cfg=getConfig();
+  toast("Borrando datos...",CA,60000);
+  try{
+    var cols=["pedidos","clientes","catalogo","prospectos","gastos","devoluciones","pendientes"];
+    for(var col of cols){
+      var snap=await db.collection(col).get();
+      var i=0;
+      var batch=db.batch();
+      for(var doc of snap.docs){
+        batch.delete(doc.ref);
+        i++;
+        if(i===450){await batch.commit();batch=db.batch();i=0;}
+      }
+      if(i>0) await batch.commit();
+    }
+    ST.pedidos=[];ST.clientes=[];ST.catalogo=[];
+    ST.prospectos=[];ST.gastos=[];ST.devoluciones=[];
+    ST.pendientes=[];ST.clienteActivo=null;ST.carrito=[];
+    localStorage.removeItem("lc_carrito");
+    localStorage.removeItem("lc_cliente");
+    localStorage.removeItem("vr_ultimo_numero_nota");
+    saveConfig(cfg);
+    toast("✓ Todos los datos borrados. Configuración conservada.",CG,5000);
+    render();
+  }catch(e){toast("Error al borrar: "+e.message,CR);}
 }
 
 // ── CIERRE DEL DÍA ─────────────────────────────────────────────────
