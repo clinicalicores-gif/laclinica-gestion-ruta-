@@ -19,8 +19,8 @@ button:active{opacity:0.82;transform:scale(0.97);}
 ::-webkit-scrollbar{width:3px;}
 ::-webkit-scrollbar-thumb{background:#CBD5E1;border-radius:4px;}
 @media(min-width:768px){
-  body{background:#E2E8F0;}
-  #root{max-width:none;margin:0;background:transparent;box-shadow:none;}
+  body{background:#CBD5E1;}
+  #root{max-width:440px;margin:0 auto;background:#F1F5F9;min-height:100vh;box-shadow:0 0 40px rgba(0,0,0,0.15);}
 }
 input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;}
 </style>
@@ -55,8 +55,6 @@ var ST={
   sistemaCarrito:"Perseo",
   search:"", searchCat:"", searchCobro:"", filtroCat:"Todos", filtroZona:"Todos", filtroDia:"Hoy", filtroPedidoCliente:"", filtroClientes:"todos",
   filtroCobro:"todos", ordenCobro:"monto",
-  vistaCobranza:"activos", vistaPendientes:"activos", vistaPedidos:"activos", vistaEntregas:"activos",
-  searchPedHist:"",
   filtroProspecto:"todos",
   searchCatAdmin:"", filtroCatAdmin:"todos",
   searchClAdmin:"", searchPend:"", searchProspecto:"", searchDev:"", searchGasto:"", filtroGasto:"todos",
@@ -78,8 +76,6 @@ function render(){
   if(fid){var el=$(fid);if(el){el.focus();if(ss!=null){try{el.setSelectionRange(ss,se);}catch(e){}}}}
 }
 function setState(o){Object.assign(ST,o);render();}
-function isDesktop(){return window.innerWidth>=768;}
-window.addEventListener("resize",(function(){var t;return function(){clearTimeout(t);t=setTimeout(render,150);}})());
 
 function toast(msg,color,dur){
   clearTimeout(ST.toastT);
@@ -97,11 +93,12 @@ function toast(msg,color,dur){
   }
 }
 
-function fmtM(n){var v=parseFloat(n||0).toFixed(2);var p=v.split(".");return"$"+p[0].replace(/\B(?=(\d{3})+(?!\d))/g,",")+"."+p[1];}
+function fmtM(n){return"$"+parseFloat(n||0).toFixed(2);}
 function fmtNota(n){return"#"+String(n||0).padStart(3,"0");}
-function skF(s){var p=(s||"").split("/");return p.length===3?p[2]+p[1]+p[0]:s||"";}
 function getNextNota(){
-  var n=(parseInt(localStorage.getItem("vr_ultimo_numero_nota")||"0"))+1;
+  var stored=parseInt(localStorage.getItem("vr_ultimo_numero_nota")||"0");
+  var maxFs=ST.pedidos.reduce((m,p)=>Math.max(m,p.numeroNota||0),0);
+  var n=Math.max(stored,maxFs)+1;
   localStorage.setItem("vr_ultimo_numero_nota",String(n));
   return n;
 }
@@ -115,13 +112,20 @@ function fechaPasada(fechaStr){
 }
 function getConfig(){try{return JSON.parse(localStorage.getItem("vr_config")||"{}");}catch(e){return {};}}
 function saveConfig(obj){localStorage.setItem("vr_config",JSON.stringify(Object.assign(getConfig(),obj)));}
+function getRol(){
+  if(ST.user&&ST.usuarios.length){
+    var u=ST.usuarios.find(x=>x.uid===ST.user.uid||(x.email&&x.email===ST.user.email));
+    if(u&&u.rol) return u.rol;
+  }
+  return ST.perfil?.rol||"vendedor";
+}
 function getNombre(){var c=getConfig();return c.nombreVendedor||ST.perfil?.nombre||"Vendedor";}
 function ventasSemana(){
   var hoy=new Date();
   var dow=hoy.getDay();
   var daysFromMon=dow===0?6:dow-1;
   var lunes=new Date(hoy);lunes.setDate(hoy.getDate()-daysFromMon);lunes.setHours(0,0,0,0);
-  return ST.pedidos.filter(p=>p.estado!=="cancelado").filter(p=>{
+  return ST.pedidos.filter(p=>p.estado!=="cancelado"&&p.estado!=="tomado").filter(p=>{
     var pts=(p.fecha||"").split("/");
     if(pts.length!==3)return false;
     var d=new Date(parseInt(pts[2]),parseInt(pts[1])-1,parseInt(pts[0]));
@@ -232,13 +236,9 @@ async function hacerLogin(){
 
 // ── APP SHELL ─────────────────────────────────────────────────────
 function htmlApp(){
-  if(isDesktop()) return htmlAppDesktop();
-  return htmlAppMobile();
-}
-function htmlAppMobile(){
   var tab=ST.tab;
   var nCart=ST.carrito.reduce((s,i)=>s+i.cantidad,0);
-  var rol=ST.perfil?.rol||"vendedor";
+  var rol=getRol();
 
   return`<div style="min-height:100vh;display:flex;flex-direction:column;background:#F1F5F9;">
 
@@ -280,7 +280,7 @@ function htmlAppMobile(){
     ${tab==="cartera"      ? htmlCartera()     :""}
     ${tab==="pendientes"   ? htmlPendientes()  :""}
     ${tab==="ajustes"      ? htmlAjustes()     :""}
-    ${tab==="usuarios"  ? htmlUsuarios()  : ""}
+    ${tab==="usuarios"  ? ((getRol()==="dueno"||getRol()==="admin")?htmlUsuarios():`<div style="padding:48px 20px;text-align:center;color:#94A3B8;">Acceso restringido</div>`) : ""}
     ${tab==="entregas"  ? htmlEntregas()  : ""}
   </div>
 
@@ -289,122 +289,11 @@ function htmlAppMobile(){
     ${navBtn("ruta","🗺️","Ruta",tab==="ruta")}
     ${navBtn("catalogo","🧴","Catálogo",tab==="catalogo")}
     ${navBtnCart(nCart,tab==="carrito")}
-    ${navBtn("pedidos","📦","Pedidos",tab==="pedidos")}
+    ${navBtn("cobranza","💰","Cobros",tab==="cobranza")}
     ${navBtn("mas","☰","Más",tab==="mas")}
   </div>
 
   ${ST.modal ? htmlModal() : ""}
-  </div>`;
-}
-function htmlAppDesktop(){
-  var tab=ST.tab;
-  var nCart=ST.carrito.reduce((s,i)=>s+i.cantidad,0);
-  var rol=ST.perfil?.rol||"vendedor";
-  return`<div style="display:flex;min-height:100vh;background:#E2E8F0;">
-  ${htmlSidebar(tab,nCart,rol)}
-  <div style="margin-left:240px;flex:1;min-height:100vh;display:flex;flex-direction:column;background:#F1F5F9;">
-    ${ST.toast?`<div id="toast_el" style="position:fixed;top:20px;right:28px;
-      background:${ST.toast.color};color:${CW};padding:11px 20px;border-radius:12px;
-      font-weight:700;font-size:13px;z-index:9999;max-width:340px;text-align:center;
-      box-shadow:0 4px 20px rgba(0,0,0,0.22);">${h(ST.toast.msg)}</div>`:`<div id="toast_el" style="display:none;"></div>`}
-    ${ST.clienteActivo?`
-    <div style="background:${CB};color:${CW};padding:10px 24px;display:flex;
-      align-items:center;justify-content:space-between;position:sticky;top:0;z-index:90;">
-      <div>
-        <div style="font-size:10px;opacity:0.75;text-transform:uppercase;letter-spacing:0.6px;">
-          Tarifa ${h(ST.clienteActivo.precio||"C")} activa</div>
-        <div style="font-size:15px;font-weight:800;line-height:1.2;">${h(ST.clienteActivo.nombre)}</div>
-      </div>
-      <div style="display:flex;align-items:center;gap:8px;">
-        ${(ST.clienteActivo.pendiente||0)>0
-          ?`<div style="background:${CR};padding:3px 10px;border-radius:20px;font-size:12px;font-weight:700;">
-              Debe ${fmtM(ST.clienteActivo.pendiente)}</div>`:""}
-        <button onclick="limpiarCliente()"
-          style="background:rgba(255,255,255,0.18);border:none;border-radius:8px;
-          padding:5px 10px;color:${CW};font-size:13px;cursor:pointer;">✕ Cambiar cliente</button>
-      </div>
-    </div>`:""}
-    <div style="flex:1;overflow-y:auto;">
-      ${tab==="ruta"      ? htmlRuta()      : ""}
-      ${tab==="catalogo"  ? htmlCatalogo()  : ""}
-      ${tab==="carrito"   ? htmlCarrito()   : ""}
-      ${tab==="cobranza"  ? htmlCobranza()  : ""}
-      ${tab==="mas"       ? htmlMas()       : ""}
-      ${tab==="pedidos"   ? htmlPedidos()   : ""}
-      ${tab==="cladmin"   ? htmlClientesAdmin() : ""}
-      ${tab==="prospectos"? htmlProspectos(): ""}
-      ${tab==="gastos"    ? htmlGastos()    : ""}
-      ${tab==="devoluciones"? htmlDevoluciones():""}
-      ${tab==="catalogo_admin"? htmlCatalogoAdmin():""}
-      ${tab==="cartera"      ? htmlCartera()     :""}
-      ${tab==="pendientes"   ? htmlPendientes()  :""}
-      ${tab==="ajustes"      ? htmlAjustes()     :""}
-      ${tab==="usuarios"  ? htmlUsuarios()  : ""}
-      ${tab==="entregas"  ? htmlEntregas()  : ""}
-    </div>
-  </div>
-  ${ST.modal ? htmlModal() : ""}
-  </div>`;
-}
-function htmlSidebar(tab,nCart,rol){
-  var nombre=getNombre();
-  var vencPend=ST.pendientes.filter(p=>!p.completado&&fechaPasada(p.fecha)).length;
-  var pendEnt=ST.pedidos.filter(p=>p.estado==="despachado"&&p.factura).length;
-  function sl(t,icon,label,badge){
-    var active=tab===t;
-    return`<button onclick="setState({tab:'${t}'})"
-      style="width:100%;display:flex;align-items:center;gap:10px;padding:8px 12px;
-      border:none;border-radius:9px;cursor:pointer;text-align:left;margin-bottom:2px;
-      background:${active?"rgba(255,255,255,0.16)":"transparent"};
-      color:${CW};font-size:13px;font-weight:${active?"700":"400"};">
-      <span style="font-size:17px;width:22px;text-align:center;flex-shrink:0;">${icon}</span>
-      <span style="flex:1;">${label}</span>
-      ${(badge||0)>0?`<span style="background:${CR};color:${CW};font-size:9px;font-weight:800;border-radius:10px;padding:1px 6px;">${badge}</span>`:""}
-    </button>`;
-  }
-  return`<div style="width:240px;min-height:100vh;background:${CN};position:fixed;top:0;left:0;
-    display:flex;flex-direction:column;z-index:200;overflow-y:auto;">
-    <div style="padding:20px 16px 10px;">
-      <div style="font-size:15px;font-weight:800;color:${CW};">La Clínica</div>
-      <div style="font-size:10px;color:rgba(255,255,255,0.45);letter-spacing:0.3px;">Gestión de Ruta</div>
-    </div>
-    <div style="height:1px;background:rgba(255,255,255,0.1);margin:0 12px 8px;"></div>
-    <div style="padding:0 8px;">
-      ${sl("ruta","🗺️","Mi Ruta")}
-      ${sl("catalogo","🧴","Catálogo")}
-      ${sl("carrito","🛒","Carrito",nCart)}
-      ${sl("pedidos","📦","Pedidos")}
-    </div>
-    <div style="height:1px;background:rgba(255,255,255,0.1);margin:6px 12px;"></div>
-    <div style="padding:0 8px;flex:1;">
-      ${sl("cobranza","💰","Cobros")}
-      ${sl("entregas","🚚","Entregas",pendEnt)}
-      ${sl("pendientes","📋","Pendientes",vencPend)}
-      ${sl("cladmin","🏪","Clientes")}
-      ${sl("prospectos","🎯","Prospectos")}
-      ${sl("devoluciones","↩️","Devoluciones")}
-      ${sl("gastos","💸","Gastos")}
-      ${sl("cartera","📊","Balance")}
-      ${sl("catalogo_admin","🧴","Cat. Admin")}
-      ${sl("ajustes","⚙️","Ajustes")}
-      ${(rol==="dueno"||rol==="admin")?sl("usuarios","👥","Usuarios"):""}
-    </div>
-    <div style="padding:8px 8px 16px;border-top:1px solid rgba(255,255,255,0.1);">
-      <button onclick="abrirCierreDia()"
-        style="width:100%;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.14);
-        border-radius:9px;padding:9px;color:${CW};font-size:12px;font-weight:600;cursor:pointer;margin-bottom:8px;">
-        📊 Cerrar Día
-      </button>
-      <div style="padding:6px 4px 8px;">
-        <div style="font-size:12px;font-weight:700;color:${CW};line-height:1.3;">${h(nombre)}</div>
-        <div style="font-size:10px;color:rgba(255,255,255,0.45);margin-top:1px;">${h(ST.user?.email||"")}</div>
-      </div>
-      <button onclick="auth.signOut()"
-        style="width:100%;background:none;border:1px solid rgba(255,255,255,0.18);
-        border-radius:9px;padding:8px;color:rgba(255,255,255,0.65);font-size:12px;cursor:pointer;">
-        🚪 Cerrar sesión
-      </button>
-    </div>
   </div>`;
 }
 
@@ -469,22 +358,18 @@ function htmlRuta(){
 
   var totalDeuda=lista.reduce((s,c)=>s+(c.pendiente||0),0);
   var conDeuda=lista.filter(c=>(c.pendiente||0)>0).length;
-  var set21=new Set(ST.clientes.filter(c=>{
-    var peds=ST.pedidos.filter(p=>p.clienteId===c.id&&p.estado!=="cancelado").sort((a,b)=>skF(b.fecha).localeCompare(skF(a.fecha)));
-    if(!peds.length)return true;var d=diasDesde(peds[0].fecha);return d!=null&&d>=21;
-  }).map(c=>c.id));
-  var zonas=["Todos",...ZONAS];
+  var zonas=["Todos","Centro","Norte","Sur","Oriente","Vía Quito","Lago Agrio","Otra"];
   var diasFiltro=["Hoy","Todos","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"];
 
   var hoyStr=fmtF();
-  var pedidosHoy=ST.pedidos.filter(p=>p.fecha===hoyStr&&p.estado!=="cancelado");
+  var pedidosHoy=ST.pedidos.filter(p=>p.fecha===hoyStr&&p.estado!=="cancelado"&&p.estado!=="tomado");
   var ventasHoy=pedidosHoy.reduce((s,p)=>s+(p.montoConIVA||p.monto||0),0);
   var cobradoHoy=ST.pedidos
     .filter(p=>p.fechaCobro===hoyStr)
     .reduce((s,p)=>s+(p.montoCobrado||0),0);
   var mesNow=new Date();
   var pedidosMes=ST.pedidos.filter(p=>{
-    if(p.estado==="cancelado") return false;
+    if(p.estado==="cancelado"||p.estado==="tomado") return false;
     var pts=(p.fecha||"").split("/");
     return pts.length===3&&parseInt(pts[1])===mesNow.getMonth()+1&&parseInt(pts[2])===mesNow.getFullYear();
   });
@@ -508,7 +393,7 @@ function htmlRuta(){
         + Cliente</button>
     </div>
 
-    <div style="display:grid;grid-template-columns:${isDesktop()?"repeat(4,1fr)":"1fr 1fr"};gap:8px;margin-bottom:14px;">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;">
       <div style="background:rgba(255,255,255,0.12);border-radius:13px;padding:12px;">
         <div style="font-size:24px;font-weight:800;color:${CW};">${pedidosHoy.length}</div>
         <div style="font-size:10px;color:rgba(255,255,255,0.65);margin-top:2px;">PEDIDOS HOY</div>
@@ -553,7 +438,7 @@ function htmlRuta(){
       </div>`;
     })()}
     ${(()=>{
-      var entPend=ST.pedidos.filter(p=>p.estado==="despachado"&&p.factura).length;
+      var entPend=ST.pedidos.filter(p=>p.estado==="despachado"&&p.factura&&(!p.entrega||p.entrega.estado!=="entregado")).length;
       return entPend>0?`<button onclick="setState({tab:'entregas'})"
         style="width:100%;background:${CO};border:none;border-radius:11px;padding:9px 13px;
         color:${CW};font-size:12px;font-weight:700;cursor:pointer;margin-bottom:10px;
@@ -564,28 +449,28 @@ function htmlRuta(){
 
     <div style="display:flex;gap:7px;margin-bottom:10px;">
       <button onclick="setState({tab:'catalogo'})"
-        style="flex:1;background:${CB};border:none;border-radius:13px;padding:11px 8px;
-        color:${CW};font-size:11px;font-weight:800;cursor:pointer;
-        display:flex;flex-direction:column;align-items:center;gap:3px;">
-        <span style="font-size:18px;">📝</span>Nueva nota
+        style="flex:2;background:${CB};border:none;border-radius:13px;padding:12px;
+        color:${CW};font-size:14px;font-weight:800;cursor:pointer;
+        display:flex;align-items:center;justify-content:center;gap:6px;">
+        🛒 Pedido
       </button>
       <button onclick="setState({tab:'cobranza'})"
-        style="flex:1;background:#16A34A;border:none;border-radius:13px;padding:11px 8px;
-        color:${CW};font-size:11px;font-weight:800;cursor:pointer;
-        display:flex;flex-direction:column;align-items:center;gap:3px;">
-        <span style="font-size:18px;">💵</span>Nuevo cobro
+        style="flex:1;background:#16A34A;border:none;border-radius:13px;padding:12px;
+        color:${CW};font-size:12px;font-weight:800;cursor:pointer;
+        display:flex;align-items:center;justify-content:center;gap:4px;">
+        💵
       </button>
       <button onclick="setState({modal:{tipo:'nuevoPendiente'}})"
         style="flex:1;background:rgba(255,255,255,0.13);border:1px solid rgba(255,255,255,0.25);
-        border-radius:13px;padding:11px 8px;color:${CW};font-size:11px;font-weight:700;cursor:pointer;
-        display:flex;flex-direction:column;align-items:center;gap:3px;">
-        <span style="font-size:18px;">📋</span>Nuevo pendiente
+        border-radius:13px;padding:12px;color:${CW};font-size:12px;font-weight:700;cursor:pointer;
+        display:flex;align-items:center;justify-content:center;gap:4px;">
+        📋
       </button>
       <button onclick="abrirCierreDia()"
         style="flex:1;background:rgba(255,255,255,0.13);border:1px solid rgba(255,255,255,0.25);
-        border-radius:13px;padding:11px 8px;color:${CW};font-size:11px;font-weight:700;cursor:pointer;
-        display:flex;flex-direction:column;align-items:center;gap:3px;">
-        <span style="font-size:18px;">📊</span>Cerrar día
+        border-radius:13px;padding:12px;color:${CW};font-size:12px;font-weight:700;cursor:pointer;
+        display:flex;align-items:center;justify-content:center;gap:4px;">
+        📊
       </button>
     </div>
     ${(()=>{
@@ -611,7 +496,6 @@ function htmlRuta(){
       <span style="position:absolute;left:13px;top:50%;transform:translateY(-50%);font-size:15px;">🔍</span>
       <input id="s_ruta" type="text" placeholder="Buscar cliente o encargado..."
         value="${h(ST.search)}" oninput="debRuta(this.value)"
-        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
         style="width:100%;background:rgba(255,255,255,0.1);border:none;border-radius:11px;
         padding:11px 13px 11px 38px;color:${CW};font-size:14px;outline:none;"/>
     </div>
@@ -643,7 +527,7 @@ function htmlRuta(){
       <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;margin-left:8px;">
         <span style="font-size:15px;font-weight:800;color:${CR};">${fmtM(c.pendiente)}</span>
         <button onclick="abrirCobroCliente('${c.id}')"
-          style="background:${CG};border:none;border-radius:8px;padding:11px 11px;min-height:44px;
+          style="background:${CG};border:none;border-radius:8px;padding:6px 11px;
           color:${CW};font-size:12px;font-weight:700;cursor:pointer;">Cobrar</button>
       </div>
     </div>`).join("")}
@@ -670,7 +554,6 @@ function htmlRuta(){
     ${lista.map(c=>{
       var activo=ST.clienteActivo?.id===c.id;
       var deuda=(c.pendiente||0);
-      var sinC21=set21.has(c.id);
       return`<div onclick="selCliente('${c.id}')"
         style="background:${activo?"#EFF6FF":CW};border:2px solid ${activo?CB:"transparent"};
         border-radius:15px;padding:13px;margin-bottom:9px;cursor:pointer;
@@ -689,9 +572,8 @@ function htmlRuta(){
           <div style="background:${CN};color:${CW};border-radius:7px;padding:2px 8px;
             font-size:11px;font-weight:700;">Tarifa ${h(c.precio||"C")}</div>
           ${deuda>0
-            ?`<span style="background:#FEE2E2;color:${CR};font-size:10px;font-weight:800;padding:2px 8px;border-radius:20px;display:inline-block;">💳 ${fmtM(deuda)}</span>`
+            ?`<div style="color:${CR};font-size:11px;font-weight:700;">Debe ${fmtM(deuda)}</div>`
             :`<div style="color:${CG};font-size:11px;font-weight:600;">Al día ✓</div>`}
-          ${sinC21?`<span style="background:#FEF9C3;color:#B45309;font-size:9px;font-weight:800;padding:2px 6px;border-radius:10px;display:inline-block;">+21d sin comprar</span>`:""}
           <button onclick="event.stopPropagation();abrirFichaCliente('${c.id}')"
             style="background:#F1F5F9;border:none;border-radius:7px;padding:3px 9px;
             font-size:10px;font-weight:700;color:#64748B;cursor:pointer;">📋 Ficha</button>
@@ -734,7 +616,7 @@ function htmlCatalogo(){
   var tarifa=ST.clienteActivo?.precio||"C";
   var q=(ST.searchCat||"").toLowerCase();
   var cat=ST.filtroCat||"Todos";
-  var cats=["Todos",...CATS];
+  var cats=["Todos","Licores","Bebidas","Cerveza","Confitería","Snack","Helados","Coctelería","General","Otro"];
 
   var prods=filtrarProds(q,cat);
 
@@ -747,7 +629,6 @@ function htmlCatalogo(){
       <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:14px;">🔍</span>
       <input id="s_cat" type="text" placeholder="Buscar producto o código..."
         value="${h(ST.searchCat)}" oninput="debCat(this.value)"
-        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
         style="width:100%;background:rgba(255,255,255,0.1);border:none;border-radius:11px;
         padding:11px 12px 11px 36px;color:${CW};font-size:14px;outline:none;"/>
     </div>
@@ -875,7 +756,7 @@ function debRuta(v){
           <div style="background:${CN};color:${CW};border-radius:7px;padding:2px 8px;
             font-size:11px;font-weight:700;">Tarifa ${h(c.precio||"C")}</div>
           ${deuda>0
-            ?`<span style="background:#FEE2E2;color:${CR};font-size:10px;font-weight:800;padding:2px 8px;border-radius:20px;display:inline-block;">💳 ${fmtM(deuda)}</span>`
+            ?`<div style="color:${CR};font-size:11px;font-weight:700;">Debe ${fmtM(deuda)}</div>`
             :`<div style="color:${CG};font-size:11px;font-weight:600;">Al día ✓</div>`}
           <button onclick="event.stopPropagation();abrirFichaCliente('${c.id}')"
             style="background:#F1F5F9;border:none;border-radius:7px;padding:3px 9px;
@@ -918,51 +799,11 @@ function debCobro(v){
   _cobroTimer=setTimeout(()=>{
     var q=v.toLowerCase();
     var hoy=new Date();hoy.setHours(0,0,0,0);
-    var diasSem=["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"];
-    var hoyDia=diasSem[new Date().getDay()];
-    var filtro=ST.filtroCobro||"todos";
-    var orden=ST.ordenCobro||"monto";
-    var pend=ST.pedidos.filter(p=>(p.estadoCobro!=="cobrado")&&(p.saldoPendiente||0)>0);
-    if(filtro==="pendientes") pend=pend.filter(p=>!p.acuerdoPago);
-    else if(filtro==="vencidos") pend=pend.filter(p=>{
-      if(!p.fecha)return false;
-      var dd=diasDesde(p.fecha);return dd!==null&&dd>15;
-    });
-    else if(filtro==="hoy") pend=pend.filter(p=>{
-      var c=ST.clientes.find(x=>x.id===p.clienteId);
-      return c&&c.diaCobro===hoyDia;
-    });
+    var pend=ST.pedidos.filter(p=>p.estadoCobro!=="cobrado"&&p.estadoCobro!=="cancelado"&&(p.saldoPendiente||0)>0);
     if(q) pend=pend.filter(p=>(p.cliente||"").toLowerCase().includes(q));
-    if(orden==="monto") pend=pend.sort((a,b)=>(b.saldoPendiente||0)-(a.saldoPendiente||0));
-    else if(orden==="dias") pend=pend.sort((a,b)=>(diasDesde(a.fecha)||0)<(diasDesde(b.fecha)||0)?1:-1);
-    else pend=pend.sort((a,b)=>(a.cliente||"").localeCompare(b.cliente||""));
+    pend=pend.sort((a,b)=>(a.cliente||"").localeCompare(b.cliente||""));
     var el=$("cobro_list");
-    if(el){el.innerHTML=buildCobroCards(pend,hoy);return;}
-    var vista=ST.vistaCobranza||"activos";
-    if(vista==="historial"){
-      var elH=$("cobro_hist_list");
-      if(elH){
-        var cobHist=ST.pedidos.filter(p=>p.estadoCobro==="cobrado"||(p.montoCobrado||0)>0);
-        if(q) cobHist=cobHist.filter(p=>(p.cliente||"").toLowerCase().includes(q));
-        var sk=s=>{var p=(s||"").split("/");return p.length===3?p[2]+p[1]+p[0]:s||""};
-        cobHist.sort((a,b)=>sk(b.fechaCobro||b.fecha).localeCompare(sk(a.fechaCobro||a.fecha)));
-        elH.innerHTML=cobHist.length===0?`<div style="text-align:center;padding:40px 20px;color:#94A3B8;">Sin cobros registrados</div>`:
-          cobHist.map(p=>`<div style="background:#FFF;border-radius:12px;padding:12px;margin-bottom:7px;box-shadow:0 1px 3px rgba(0,0,0,0.06);border-left:4px solid #16A34A;">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-            <div style="flex:1;min-width:0;">
-              <div style="font-size:14px;font-weight:700;color:#0F2240;">${h(p.cliente)}</div>
-              <div style="font-size:11px;color:#64748B;margin-top:2px;">${p.fechaCobro?"✓ "+h(p.fechaCobro):""}${p.factura?" · "+h(p.factura):""}</div>
-              ${p.formaPago||p.formaCobro?`<div style="font-size:11px;color:#64748B;">${h(p.formaPago||p.formaCobro)}</div>`:""}
-            </div>
-            <div style="text-align:right;flex-shrink:0;margin-left:10px;">
-              <div style="font-size:14px;font-weight:700;color:#16A34A;">${fmtM(p.montoCobrado||0)}</div>
-              <div style="font-size:10px;color:#64748B;">${h(p.sistema||"")}</div>
-            </div>
-          </div></div>`).join("");
-        return;
-      }
-    }
-    render();
+    if(el) el.innerHTML=buildCobroCards(pend,hoy);
   },250);
 }
 function buildCobroCards(pend,hoy){
@@ -1021,7 +862,7 @@ function agregarProd(id){
   var idx=ST.carrito.findIndex(x=>x.id===id);
   if(idx>=0){
     ST.carrito[idx].cantidad++;
-    ST.carrito[idx].subtotal=ST.carrito[idx].cantidad*ST.carrito[idx].precio;
+    ST.carrito[idx].subtotal=ST.carrito[idx].cantidad*precio;
   } else {
     ST.carrito.push({id,codigo:p.codigo,nombre:p.nombre,cantidad:1,
       precio,subtotal:precio,sistema:p.sistema||"Perseo",esEspecial:!!precEsp});
@@ -1099,10 +940,7 @@ function htmlCarrito(){
             <button onclick="event.stopPropagation();iniciarEditPrecio('${item.id}')"
               style="background:none;border:1px solid #E2E8F0;cursor:pointer;font-size:11px;padding:1px 5px;
               color:#94A3B8;border-radius:5px;line-height:1.4;" title="Editar precio">✏️</button>
-            <button onclick="event.stopPropagation();cambiarSistemaItem('${item.id}')"
-              style="background:none;border:1px solid #E2E8F0;cursor:pointer;font-size:10px;padding:1px 6px;
-              color:#64748B;border-radius:5px;line-height:1.4;" title="Cambiar sistema">
-              ${item.sistema==="Importados"?"🌎":"🇪🇨"} ${h(item.sistema||"Perseo")}</button>
+            <span style="color:#94A3B8;">· ${h(item.sistema||"")}</span>
           </div>
           <div id="cprice_edit_${item.id}" style="display:none;margin-top:5px;">
             <div style="display:flex;align-items:center;gap:5px;">
@@ -1136,15 +974,15 @@ function htmlCarrito(){
     box-shadow:0 1px 4px rgba(0,0,0,0.07);">
     <div style="display:flex;justify-content:space-between;margin-bottom:7px;">
       <span style="color:#64748B;font-size:13px;">Subtotal sin IVA</span>
-      <span id="cart_siniva" style="font-weight:700;font-size:14px;">${fmtM(sinIVA)}</span>
+      <span style="font-weight:700;font-size:14px;">${fmtM(sinIVA)}</span>
     </div>
     <div style="display:flex;justify-content:space-between;padding-bottom:10px;border-bottom:2px solid #F1F5F9;">
       <span style="color:#64748B;font-size:13px;">IVA 15% (incluido)</span>
-      <span id="cart_iva" style="font-weight:700;font-size:14px;">${fmtM(iva)}</span>
+      <span style="font-weight:700;font-size:14px;">${fmtM(iva)}</span>
     </div>
     <div style="display:flex;justify-content:space-between;padding-top:10px;">
       <span style="font-size:16px;font-weight:800;color:${CN};">TOTAL</span>
-      <span id="cart_total" style="font-size:21px;font-weight:800;color:${CG};">${fmtM(total)}</span>
+      <span style="font-size:21px;font-weight:800;color:${CG};">${fmtM(total)}</span>
     </div>
   </div>
 
@@ -1169,12 +1007,6 @@ function htmlCarrito(){
 }
 
 function setSistema(s){ST.sistemaCarrito=s;saveCart();render();}
-function cambiarSistemaItem(itemId){
-  var idx=ST.carrito.findIndex(x=>x.id===itemId);
-  if(idx<0) return;
-  ST.carrito[idx].sistema=ST.carrito[idx].sistema==="Importados"?"Perseo":"Importados";
-  saveCart();render();
-}
 
 function iniciarEditPrecio(itemId){
   var lbl=$("cprice_lbl_"+itemId);
@@ -1205,12 +1037,8 @@ function editarPrecioCart(itemId){
   if(lbl){lbl.textContent=fmtM(nuevoPrecio)+" c/u";lbl.style.display="";}
   if(edit) edit.style.display="none";
   if(subt) subt.textContent=fmtM(ST.carrito[idx].subtotal);
-  var newTotal=ST.carrito.reduce((s,i)=>s+i.subtotal,0);
-  var newSinIVA=newTotal/1.15;
-  var elTotal=$("cart_total"),elSinIVA=$("cart_siniva"),elIVA=$("cart_iva");
-  if(elTotal) elTotal.textContent=fmtM(newTotal);
-  if(elSinIVA) elSinIVA.textContent=fmtM(newSinIVA);
-  if(elIVA) elIVA.textContent=fmtM(newTotal-newSinIVA);
+  // Update totals by re-rendering just the summary section
+  var total=ST.carrito.reduce((s,i)=>s+i.subtotal,0);
   toast("✓ Precio actualizado",CG,1500);
 }
 
@@ -1261,10 +1089,8 @@ function setEntregaResp(r){
 async function guardarPedido(){
   if(ST._saving) return;
   ST._saving=true;
-  var tipoFac=val("gp_tipo_fac")||"consumidorFinal";
-  var nombreFac=tipoFac==="conFactura"?(val("gp_nombre_fac")||ST.clienteActivo?.nombre||""):"Consumidor Final";
-  var cedulaFac=tipoFac==="conFactura"?(val("gp_cedula_fac")||""):"";
-  var rucFac=tipoFac==="conFactura"?(val("gp_ruc_fac")||""):"";
+  var forma=val("gp_forma")||"Contado";
+  var contactoFacturacion=val("gp_contacto")||"";
   var yaPago=(val("gp_ya_pago")||"no")==="si";
   var notas=val("gp_notas")||"";
   var resp=val("gp_resp")||"vendedor";
@@ -1276,26 +1102,19 @@ async function guardarPedido(){
   var entregaObj={estado:"pendiente",responsable:resp,fechaEntrega:null,notas:""};
   var estadoCobro=yaPago?"cobrado":"pendiente";
   var saldoPendiente=yaPago?0:total;
-  var formaPago=yaPago?"Contado":"Crédito";
-  var contactoFacturacion=tipoFac==="conFactura"?nombreFac:"";
   try{
     var ref=await db.collection("pedidos").add({
       cliente:ST.clienteActivo.nombre,
       clienteId:ST.clienteActivo.id,
       vendedor:vendedorNombre,
       productos:prodsCopy,
-      monto:sub,montoConIVA:total,
+      monto:sub, montoConIVA:total,
       sistema:ST.sistemaCarrito,
-      formaPago,
-      tipoFacturacion:tipoFac,
-      nombreFacturacion:nombreFac,
-      cedulaFacturacion:cedulaFac,
-      rucFacturacion:rucFac,
+      formaPago:forma,
       contactoFacturacion,notas,
       estado:"tomado",
       estadoCobro,
       saldoPendiente,
-      montoCobrado:yaPago?total:0,
       fechaCobro:yaPago?fmtF():"",
       fecha:fmtF(),
       numeroNota:nNota,
@@ -1304,21 +1123,27 @@ async function guardarPedido(){
     });
     ST.pedidos.unshift({id:ref.id,clienteId:ST.clienteActivo.id,cliente:ST.clienteActivo.nombre,
       monto:sub,montoConIVA:total,sistema:ST.sistemaCarrito,estado:"tomado",
-      estadoCobro,saldoPendiente,montoCobrado:yaPago?total:0,fecha:fmtF(),contactoFacturacion,
-      numeroNota:nNota,vendedor:vendedorNombre,productos:prodsCopy,entrega:entregaObj,
-      tipoFacturacion:tipoFac,nombreFacturacion:nombreFac,cedulaFacturacion:cedulaFac});
-    var saldoOk=true;
-    if(!yaPago&&ST.clienteActivo.id){
+      estadoCobro,saldoPendiente,fecha:fmtF(),contactoFacturacion,
+      numeroNota:nNota,vendedor:vendedorNombre,productos:prodsCopy,entrega:entregaObj});
+    if(!yaPago&&forma==="Credito"&&ST.clienteActivo.id){
       var nSaldo=(parseFloat(ST.clienteActivo.pendiente)||0)+total;
       try{
         await db.collection("clientes").doc(ST.clienteActivo.id).update({pendiente:nSaldo});
         var cIdx=ST.clientes.findIndex(c=>c.id===ST.clienteActivo.id);
         if(cIdx>=0) ST.clientes[cIdx].pendiente=nSaldo;
         ST.clienteActivo.pendiente=nSaldo;
-      }catch(e){saldoOk=false;}
+      }catch(e){}
+    }
+    for(var pi of prodsCopy){
+      var pIdx=ST.catalogo.findIndex(x=>x.codigo===pi.codigo||x.nombre===pi.nombre);
+      if(pIdx>=0&&ST.catalogo[pIdx].stockActual!=null){
+        var newStk=Math.max(0,ST.catalogo[pIdx].stockActual-pi.cantidad);
+        ST.catalogo[pIdx].stockActual=newStk;
+        try{await db.collection("catalogo").doc(ST.catalogo[pIdx].id).update({stockActual:newStk});}catch(e){}
+      }
     }
     ST.carrito=[];saveCart();
-    toast(yaPago?"✓ Pedido guardado — cobrado":saldoOk?"✓ Pedido guardado":"✓ Pedido guardado — ⚠️ Saldo del cliente no se actualizó, revisá su ficha",yaPago||saldoOk?CG:CA,saldoOk?3000:7000);
+    toast(yaPago?"✓ Pedido guardado — cobrado":"✓ Pedido guardado",CG);
     ST._saving=false;
     setState({modal:null,tab:"ruta"});
   }catch(e){toast("Error: "+e.message,CR);ST._saving=false;}
@@ -1328,23 +1153,16 @@ async function guardarPedido(){
 // TAB 4 — COBRANZA
 // ═══════════════════════════════════════════════════════════════════
 function htmlCobranza(){
-  var vista=ST.vistaCobranza||"activos";
   var hoyD=new Date();hoyD.setHours(0,0,0,0);
   var hoyStr=fmtF();
   var diasSem=["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"];
   var hoyDia=diasSem[new Date().getDay()];
-  var todoPend=ST.pedidos.filter(p=>(p.estadoCobro!=="cobrado")&&(p.saldoPendiente||0)>0);
+  var todoPend=ST.pedidos.filter(p=>p.estadoCobro!=="cobrado"&&p.estadoCobro!=="cancelado"&&(p.saldoPendiente||0)>0);
   var filtro=ST.filtroCobro||"todos";
   var orden=ST.ordenCobro||"monto";
   var q=ST.searchCobro||"";
 
-  var total=todoPend.reduce((s,p)=>s+(p.saldoPendiente||0),0);
-  var cobradoHoy=ST.pedidos.filter(p=>p.fechaCobro===hoyStr).reduce((s,p)=>s+(p.montoCobrado||0),0);
-  var acuerdosHoy=todoPend.filter(p=>p.acuerdoPago&&(p.acuerdoPago.fecha===hoyStr||fechaPasada(p.acuerdoPago.fecha))).length;
-  var totalPerseo=todoPend.filter(p=>p.sistema!=="Importados").reduce((s,p)=>s+(p.saldoPendiente||0),0);
-  var totalImp=todoPend.filter(p=>p.sistema==="Importados").reduce((s,p)=>s+(p.saldoPendiente||0),0);
-
-  // Activos data
+  // Filtro chips
   var pend=todoPend.slice();
   if(filtro==="pendientes") pend=pend.filter(p=>!p.acuerdoPago);
   else if(filtro==="vencidos") pend=pend.filter(p=>{
@@ -1356,15 +1174,17 @@ function htmlCobranza(){
     return c&&c.diaCobro===hoyDia;
   });
   if(q) pend=pend.filter(p=>(p.cliente||"").toLowerCase().includes(q.toLowerCase()));
+  // Orden
   if(orden==="monto") pend=pend.sort((a,b)=>(b.saldoPendiente||0)-(a.saldoPendiente||0));
   else if(orden==="dias") pend=pend.sort((a,b)=>(diasDesde(a.fecha)||0)<(diasDesde(b.fecha)||0)?1:-1);
   else pend=pend.sort((a,b)=>(a.cliente||"").localeCompare(b.cliente||""));
 
-  // Historial data
-  var cobHist=ST.pedidos.filter(p=>p.estadoCobro==="cobrado"||(p.montoCobrado||0)>0);
-  if(q) cobHist=cobHist.filter(p=>(p.cliente||"").toLowerCase().includes(q.toLowerCase()));
-  cobHist.sort((a,b)=>{var sk=s=>{var p=(s||"").split("/");return p.length===3?p[2]+p[1]+p[0]:s||""};return sk(b.fechaCobro||b.fecha).localeCompare(sk(a.fechaCobro||a.fecha));});
-  var totalHist=cobHist.reduce((s,p)=>s+(p.montoCobrado||0),0);
+  var total=todoPend.reduce((s,p)=>s+(p.saldoPendiente||0),0);
+  var cobradoHoy=ST.pedidos.filter(p=>p.fechaCobro===hoyStr).reduce((s,p)=>s+(p.montoCobrado||0),0);
+  var acuerdosHoy=todoPend.filter(p=>p.acuerdoPago&&(p.acuerdoPago.fecha===hoyStr||fechaPasada(p.acuerdoPago.fecha))).length;
+  // Desglose Perseo vs Importados
+  var totalPerseo=todoPend.filter(p=>p.sistema!=="Importados").reduce((s,p)=>s+(p.saldoPendiente||0),0);
+  var totalImp=todoPend.filter(p=>p.sistema==="Importados").reduce((s,p)=>s+(p.saldoPendiente||0),0);
 
   var chips=[["todos","Todos"],["pendientes","Sin acuerdo"],["vencidos","Vencidos +15d"],["hoy","Cobros hoy"]];
   var ordOpts=[["monto","Mayor monto"],["dias","Más días"],["nombre","Por nombre"]];
@@ -1395,40 +1215,10 @@ function htmlCobranza(){
       <span style="position:absolute;left:11px;top:50%;transform:translateY(-50%);font-size:14px;">🔍</span>
       <input id="s_cobro" type="text" placeholder="Buscar cliente..."
         value="${h(ST.searchCobro)}" oninput="debCobro(this.value)"
-        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
         style="width:100%;background:rgba(255,255,255,0.15);border:none;border-radius:10px;
         padding:9px 12px 9px 34px;color:${CW};font-size:13px;outline:none;"/>
     </div>
   </div>
-  ${vistaToggle("vistaCobranza",vista)}
-  ${vista==="historial"?`
-  <div style="padding:14px 14px 80px;">
-    <div style="background:#F0FDF4;border-radius:12px;padding:11px 14px;margin-bottom:14px;
-      display:flex;justify-content:space-between;align-items:center;">
-      <div style="font-size:13px;color:${CG};font-weight:700;">Total cobrado</div>
-      <div style="font-size:18px;font-weight:800;color:${CG};">${fmtM(totalHist)}</div>
-    </div>
-    <div id="cobro_hist_list">
-    ${cobHist.length===0?`<div style="text-align:center;padding:40px 20px;color:#94A3B8;">Sin cobros registrados</div>`:""}
-    ${cobHist.map(p=>`<div style="background:${CW};border-radius:12px;padding:12px;margin-bottom:7px;
-      box-shadow:0 1px 3px rgba(0,0,0,0.06);border-left:4px solid ${CG};">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-        <div style="flex:1;min-width:0;">
-          <div style="font-size:14px;font-weight:700;color:${CN};">${h(p.cliente)}</div>
-          <div style="font-size:11px;color:#64748B;margin-top:2px;">
-            ${p.fechaCobro?"✓ "+h(p.fechaCobro):""}${p.factura?" · "+h(p.factura):""}
-          </div>
-          ${p.formaPago||p.formaCobro?`<div style="font-size:11px;color:#64748B;">${h(p.formaPago||p.formaCobro)}</div>`:""}
-        </div>
-        <div style="text-align:right;flex-shrink:0;margin-left:10px;">
-          <div style="font-size:14px;font-weight:700;color:${CG};">${fmtM(p.montoCobrado||0)}</div>
-          <div style="font-size:10px;color:#64748B;">${h(p.sistema||"")}</div>
-        </div>
-      </div>
-    </div>`).join("")}
-    </div>
-  </div>
-  `:`
   <div style="background:${CW};border-bottom:1px solid #E2E8F0;padding:8px 14px;overflow-x:auto;white-space:nowrap;">
     ${chips.map(([v,l])=>`<button onclick="setState({filtroCobro:'${v}'})"
       style="display:inline-block;margin-right:5px;padding:4px 10px;border-radius:20px;border:none;
@@ -1443,26 +1233,36 @@ function htmlCobranza(){
   <div id="cobro_list" style="padding:14px 14px 80px;">
     ${buildCobroCards(pend,hoyD)}
   </div>
-  `}
   </div>`;
 }
 
 function abrirCobro(id){
   var p=ST.pedidos.find(x=>x.id===id);
   if(!p) return;
-  setState({modal:{tipo:"cobrarCliente",clienteId:p.clienteId}});
+  setState({modal:{tipo:"cobrar",pedido:p}});
 }
 
 // ═══════════════════════════════════════════════════════════════════
 // TAB 5 — MÁS
 // ═══════════════════════════════════════════════════════════════════
 function htmlMas(){
-  var rol=ST.perfil?.rol||"vendedor";
+  var rol=getRol();
   var nombre=getNombre();
   return`<div class="fade" style="padding:18px 14px;">
   <div style="font-size:20px;font-weight:800;color:${CN};">${h(nombre)}</div>
   <div style="font-size:12px;color:#64748B;margin-bottom:18px;">${h(rol)} · ${h(ST.user?.email||"")}</div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:14px;">
+    ${masCard("📦","Pedidos","pedidos")}
+    ${(()=>{var ep=ST.pedidos.filter(p=>p.estado==="despachado"&&p.factura&&(!p.entrega||p.entrega.estado!=="entregado")).length;
+    return`<button onclick="setState({tab:'entregas'})"
+      style="background:${CW};border:none;border-radius:14px;padding:15px;cursor:pointer;
+      text-align:left;box-shadow:0 1px 4px rgba(0,0,0,0.06);position:relative;">
+      ${ep>0?`<span style="position:absolute;top:8px;right:8px;background:${CO};color:${CW};
+        font-size:9px;font-weight:800;border-radius:10px;padding:2px 6px;">${ep}</span>`:""}
+      <div style="font-size:26px;margin-bottom:5px;">🚚</div>
+      <div style="font-size:13px;font-weight:700;color:${CN};">Entregas</div>
+    </button>`;})()}
+    ${masCard("📊","Balance","cartera")}
     ${(()=>{var venc=ST.pendientes.filter(p=>!p.completado&&fechaPasada(p.fecha)).length;
     return`<button onclick="setState({tab:'pendientes'})"
       style="background:${CW};border:none;border-radius:14px;padding:15px;cursor:pointer;
@@ -1472,24 +1272,12 @@ function htmlMas(){
       <div style="font-size:26px;margin-bottom:5px;">📋</div>
       <div style="font-size:13px;font-weight:700;color:${CN};">Pendientes</div>
     </button>`;})()}
+    ${masCard("🏪","Clientes","cladmin")}
     ${masCard("🎯","Prospectos","prospectos")}
     ${masCard("↩️","Devoluciones","devoluciones")}
     ${masCard("💸","Gastos Ruta","gastos")}
-    ${masCard("📊","Balance","cartera")}
-    ${masCard("💰","Cobros","cobranza")}
-    ${masCard("⚙️","Ajustes","ajustes")}
-    ${masCard("📦","Pedidos","pedidos")}
-    ${(()=>{var ep=ST.pedidos.filter(p=>p.estado==="despachado"&&p.factura).length;
-    return`<button onclick="setState({tab:'entregas'})"
-      style="background:${CW};border:none;border-radius:14px;padding:15px;cursor:pointer;
-      text-align:left;box-shadow:0 1px 4px rgba(0,0,0,0.06);position:relative;">
-      ${ep>0?`<span style="position:absolute;top:8px;right:8px;background:${CO};color:${CW};
-        font-size:9px;font-weight:800;border-radius:10px;padding:2px 6px;">${ep}</span>`:""}
-      <div style="font-size:26px;margin-bottom:5px;">🚚</div>
-      <div style="font-size:13px;font-weight:700;color:${CN};">Entregas</div>
-    </button>`;})()}
-    ${masCard("🏪","Clientes","cladmin")}
     ${masCard("🧴","Catálogo Admin","catalogo_admin")}
+    ${masCard("⚙️","Ajustes","ajustes")}
     ${(rol==="dueno"||rol==="admin")?masCard("👥","Usuarios","usuarios"):""}
   </div>
   <button onclick="abrirCierreDia()"
@@ -1522,54 +1310,21 @@ function subHeader(titulo,icon){
   </div>`;
 }
 
-function vistaToggle(key,actual){
-  return`<div style="display:flex;background:#F1F5F9;border-radius:10px;padding:3px;margin:10px 14px;">
-    <button onclick="setState({${key}:'activos'})"
-      style="flex:1;padding:7px 0;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;
-      background:${actual==='activos'?CW:'transparent'};color:${actual==='activos'?CN:'#64748B'};
-      box-shadow:${actual==='activos'?'0 1px 3px rgba(0,0,0,0.1)':'none'};">Activos</button>
-    <button onclick="setState({${key}:'historial'})"
-      style="flex:1;padding:7px 0;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;
-      background:${actual==='historial'?CW:'transparent'};color:${actual==='historial'?CN:'#64748B'};
-      box-shadow:${actual==='historial'?'0 1px 3px rgba(0,0,0,0.1)':'none'};">Historial</button>
-  </div>`;
-}
-
 // ── PEDIDOS ───────────────────────────────────────────────────────
 function htmlPedidos(){
-  var vista=ST.vistaPedidos||"activos";
   var colE={tomado:CA,facturado:CB,despachado:CO,entregado:CG,cancelado:"#94A3B8"};
   var filtCli=ST.filtroPedidoCliente||"";
+  var lista=filtCli?ST.pedidos.filter(p=>p.clienteId===filtCli):ST.pedidos;
   var nomFiltro=filtCli?(ST.clientes.find(x=>x.id===filtCli)?.nombre||""):"";
-  var sq=ST.searchPedHist||"";
-  var activosEst=["tomado","facturado","despachado"];
-  var histEst=["entregado","cancelado"];
-  var lista=ST.pedidos.filter(p=>vista==="activos"?activosEst.includes(p.estado):histEst.includes(p.estado));
-  if(filtCli) lista=lista.filter(p=>p.clienteId===filtCli);
-  if(vista==="historial"&&sq) lista=lista.filter(p=>
-    (p.cliente||"").toLowerCase().includes(sq.toLowerCase())||(p.fecha||"").includes(sq)
-  );
-  var totalLista=lista.length;
-  lista=lista.slice(0,100);
   return`<div class="fade">${subHeader("Pedidos","📦")}
-  ${vistaToggle("vistaPedidos",vista)}
   ${filtCli?`<div style="background:#EFF6FF;padding:8px 14px;display:flex;align-items:center;justify-content:space-between;">
-    <div style="font-size:12px;color:${CB};font-weight:700;">📍 ${h(nomFiltro)} — ${totalLista} pedido${totalLista!==1?"s":""}</div>
+    <div style="font-size:12px;color:${CB};font-weight:700;">📍 ${h(nomFiltro)} — ${lista.length} pedido${lista.length!==1?"s":""}</div>
     <button onclick="setState({filtroPedidoCliente:''})"
       style="background:none;border:none;color:${CB};font-size:12px;font-weight:700;cursor:pointer;">✕ Ver todos</button>
   </div>`:""}
-  ${vista==="historial"?`<div style="background:${CW};padding:8px 14px;border-bottom:1px solid #E2E8F0;">
-    <div style="position:relative;">
-      <span style="position:absolute;left:11px;top:50%;transform:translateY(-50%);font-size:13px;">🔍</span>
-      <input id="s_ped_hist" type="text" placeholder="Buscar cliente o fecha..." value="${h(sq)}"
-        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
-        oninput="setState({searchPedHist:this.value})"
-        style="width:100%;border:2px solid #E2E8F0;border-radius:10px;padding:9px 12px 9px 33px;font-size:13px;outline:none;"/>
-    </div>
-  </div>`:""}
   <div style="padding:14px 14px 80px;">
-    ${lista.length===0?`<div style="text-align:center;padding:48px;color:#94A3B8;">${vista==="activos"?"Sin pedidos activos":"Sin historial"}</div>`:""}
-    ${lista.map(p=>{
+    ${lista.length===0?`<div style="text-align:center;padding:48px;color:#94A3B8;">Sin pedidos</div>`:""}
+    ${lista.slice(0,80).map(p=>{
       var cli=ST.clientes.find(x=>x.id===p.clienteId);
       var tieneDeuda=cli&&(cli.pendiente||0)>0.01&&p.estadoCobro!=="cobrado";
       return`<div style="background:${CW};border-radius:13px;padding:13px;margin-bottom:8px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
@@ -1589,27 +1344,21 @@ function htmlPedidos(){
             padding:2px 8px;font-size:10px;font-weight:700;margin-top:3px;">${h(p.estado||"")}</div>
         </div>
       </div>
-      ${(p.productos&&p.productos.length)?`<div style="background:#F8FAFC;border-radius:8px;padding:7px 10px;margin-bottom:8px;">
-        ${p.productos.map(x=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:2px 0;">
-          <span style="font-size:11px;color:#475569;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${h(x.nombre||x.codigo||"")}</span>
-          <span style="font-size:11px;color:#64748B;white-space:nowrap;margin-left:8px;">${x.cantidad} × ${fmtM(x.precioUnitario||0)}</span>
-        </div>`).join("")}
-      </div>`:""}
       <div style="display:flex;gap:6px;flex-wrap:wrap;">
         <button onclick="abrirNotaVenta('${p.id}')"
-          style="background:#F1F5F9;border:1px solid #E2E8F0;border-radius:7px;padding:11px 11px;min-height:44px;
+          style="background:#F1F5F9;border:1px solid #E2E8F0;border-radius:7px;padding:6px 11px;
           color:#64748B;font-size:11px;font-weight:700;cursor:pointer;">
           📄 ${p.numeroNota?fmtNota(p.numeroNota):"Nota"}</button>
-        ${p.estado==="tomado"&&vista==="activos"?`<button onclick="cambiarEstado('${p.id}','facturado')"
-          style="background:${CB};border:none;border-radius:7px;padding:11px 12px;min-height:44px;color:${CW};font-size:12px;font-weight:600;cursor:pointer;">✓ Facturar</button>`:""}
-        ${p.estado==="facturado"&&vista==="activos"?`<button onclick="abrirDespachar('${p.id}')"
-          style="background:${CO};border:none;border-radius:7px;padding:11px 12px;min-height:44px;color:${CW};font-size:12px;font-weight:600;cursor:pointer;">📦 Despachar</button>`:""}
-        ${p.estado==="despachado"&&vista==="activos"?`<button onclick="confirmarEntregar('${p.id}')"
-          style="background:${CG};border:none;border-radius:7px;padding:11px 12px;min-height:44px;color:${CW};font-size:12px;font-weight:600;cursor:pointer;">✓ Entregar</button>`:""}
-        ${p.estado==="entregado"&&p.estadoCobro!=="cobrado"&&(p.saldoPendiente||0)>0?`<button onclick="abrirCobro('${p.id}')"
-          style="background:${CG};border:none;border-radius:7px;padding:11px 12px;min-height:44px;color:${CW};font-size:12px;font-weight:600;cursor:pointer;">💵 Cobrar</button>`:""}
-        ${p.estado!=="cancelado"&&p.estado!=="entregado"&&vista==="activos"?`<button onclick="cambiarEstado('${p.id}','cancelado')"
-          style="background:#FEF2F2;border:1px solid #FECACA;border-radius:7px;padding:11px 10px;min-height:44px;
+        ${p.estado==="tomado"?`<button onclick="cambiarEstado('${p.id}','facturado')"
+          style="background:${CB};border:none;border-radius:7px;padding:6px 12px;color:${CW};font-size:12px;font-weight:600;cursor:pointer;">✓ Facturar</button>`:""}
+        ${p.estado==="facturado"?`<button onclick="abrirDespachar('${p.id}')"
+          style="background:${CO};border:none;border-radius:7px;padding:6px 12px;color:${CW};font-size:12px;font-weight:600;cursor:pointer;">📦 Despachar</button>`:""}
+        ${p.estado==="despachado"?`<button onclick="confirmarEntregar('${p.id}')"
+          style="background:${CG};border:none;border-radius:7px;padding:6px 12px;color:${CW};font-size:12px;font-weight:600;cursor:pointer;">✓ Entregar</button>`:""}
+        ${(p.saldoPendiente||0)>0?`<button onclick="abrirCobro('${p.id}')"
+          style="background:${CG};border:none;border-radius:7px;padding:6px 12px;color:${CW};font-size:12px;font-weight:600;cursor:pointer;">💵 Cobrar</button>`:""}
+        ${p.estado!=="cancelado"?`<button onclick="cambiarEstado('${p.id}','cancelado')"
+          style="background:#FEF2F2;border:1px solid #FECACA;border-radius:7px;padding:6px 10px;
           color:${CR};font-size:11px;font-weight:600;cursor:pointer;">✕ Cancelar</button>`:""}
       </div>
     </div>`;
@@ -1618,26 +1367,36 @@ function htmlPedidos(){
 }
 
 async function cambiarEstado(id,estado){
-  if(estado==="despachado"||estado==="entregado"){toast("Usá el flujo correspondiente",CR);return;}
-  var p=ST.pedidos.find(x=>x.id===id);
-  if(!p) return;
-  if(estado==="cancelado"&&p.estado==="entregado"){toast("No se puede cancelar un pedido ya entregado",CR);return;}
   var conf={
     facturado:"¿Confirmar como facturado?",
+    despachado:"¿Confirmar como despachado?",
+    entregado:"¿Confirmar como entregado?",
     cancelado:"⚠️ ¿Cancelar este pedido?\n\nEl registro quedará guardado permanentemente."
   };
   if(!confirm(conf[estado]||"¿Cambiar estado?")) return;
   try{
-    await db.collection("pedidos").doc(id).update({estado,ts:firebase.firestore.FieldValue.serverTimestamp()});
-    var idx=ST.pedidos.findIndex(x=>x.id===id);
-    if(idx>=0) ST.pedidos[idx].estado=estado;
-    if(estado==="cancelado"&&p.clienteId&&p.estadoCobro!=="cobrado"&&(p.saldoPendiente||0)>0){
+    var p=ST.pedidos.find(x=>x.id===id);
+    var updEst={estado,ts:firebase.firestore.FieldValue.serverTimestamp()};
+    if(estado==="cancelado"&&p&&p.estadoCobro!=="cobrado"){
+      updEst.estadoCobro="cancelado";
+      updEst.saldoPendiente=0;
+    }
+    await db.collection("pedidos").doc(id).update(updEst);
+    var idx=ST.pedidos.findIndex(p=>p.id===id);
+    if(idx>=0){
+      ST.pedidos[idx].estado=estado;
+      if(estado==="cancelado"){
+        if(ST.pedidos[idx].estadoCobro!=="cobrado") ST.pedidos[idx].estadoCobro="cancelado";
+        ST.pedidos[idx].saldoPendiente=0;
+      }
+    }
+    if(estado==="cancelado"&&p&&p.clienteId&&p.estadoCobro!=="cobrado"&&(p.saldoPendiente||0)>0){
       var cIdx=ST.clientes.findIndex(c=>c.id===p.clienteId);
       if(cIdx>=0){
-        var nSaldo=Math.max(0,(ST.clientes[cIdx].pendiente||0)-(p.saldoPendiente||0));
-        try{await db.collection("clientes").doc(p.clienteId).update({pendiente:nSaldo});
-          ST.clientes[cIdx].pendiente=nSaldo;
-          if(ST.clienteActivo?.id===p.clienteId) ST.clienteActivo.pendiente=nSaldo;
+        var nPend=Math.max(0,(ST.clientes[cIdx].pendiente||0)-(p.saldoPendiente||0));
+        try{await db.collection("clientes").doc(p.clienteId).update({pendiente:nPend});
+          ST.clientes[cIdx].pendiente=nPend;
+          if(ST.clienteActivo?.id===p.clienteId) ST.clienteActivo.pendiente=nPend;
         }catch(e){}
       }
     }
@@ -1691,19 +1450,9 @@ async function confirmarEntregar(id){
   if(!p||p.estado!=="despachado"){toast("Solo pedidos despachados pueden marcarse como entregados",CR);return;}
   if(!p.factura){toast("El pedido no tiene número de factura registrado",CR);return;}
   if(!confirm("¿Confirmar como entregado?")) return;
-  // Si ya estaba cobrado (yaPago=true al crear el pedido), no preguntar de nuevo
-  var yaEstaCobrado=p.estadoCobro==="cobrado";
-  var pago=!yaEstaCobrado&&confirm("¿El cliente pagó ahora?\n\nAceptar = Sí pagó\nCancelar = Queda como deuda en Cobros");
-  var montoPagado=yaEstaCobrado?0:(p.saldoPendiente||0);
   try{
     var upd={estado:"entregado","entrega.estado":"entregado","entrega.fechaEntrega":fmtF(),
       ts:firebase.firestore.FieldValue.serverTimestamp()};
-    if(pago){
-      upd.estadoCobro="cobrado";
-      upd.saldoPendiente=0;
-      upd.fechaCobro=fmtF();
-      upd.montoCobrado=(p.montoCobrado||0)+montoPagado;
-    }
     await db.collection("pedidos").doc(id).update(upd);
     var idx=ST.pedidos.findIndex(x=>x.id===id);
     if(idx>=0){
@@ -1711,37 +1460,19 @@ async function confirmarEntregar(id){
       if(!ST.pedidos[idx].entrega) ST.pedidos[idx].entrega={};
       ST.pedidos[idx].entrega.estado="entregado";
       ST.pedidos[idx].entrega.fechaEntrega=fmtF();
-      if(pago){
-        ST.pedidos[idx].estadoCobro="cobrado";
-        ST.pedidos[idx].saldoPendiente=0;
-        ST.pedidos[idx].montoCobrado=(ST.pedidos[idx].montoCobrado||0)+montoPagado;
-      }
     }
-    if(pago&&montoPagado>0&&p.clienteId){
-      var cIdx=ST.clientes.findIndex(c=>c.id===p.clienteId);
-      if(cIdx>=0){
-        var nSaldo=Math.max(0,(ST.clientes[cIdx].pendiente||0)-montoPagado);
-        try{await db.collection("clientes").doc(p.clienteId).update({pendiente:nSaldo});
-          ST.clientes[cIdx].pendiente=nSaldo;
-          if(ST.clienteActivo?.id===p.clienteId) ST.clienteActivo.pendiente=nSaldo;
-        }catch(e){}
-      }
-    }
-    toast(pago?"✓ Entregado y cobrado":yaEstaCobrado?"✓ Entregado":"✓ Entregado — queda en Cobros",CG);render();
+    var yaEstaCobrado=p.estadoCobro==="cobrado";
+    toast(yaEstaCobrado?"✓ Entregado":"✓ Entregado — pendiente de cobro en Cobranza",CG);render();
   }catch(e){toast("Error: "+e.message,CR);}
 }
 
 // ── CONTROL DE ENTREGAS ───────────────────────────────────────────
 function htmlEntregas(){
-  var vista=ST.vistaEntregas||"activos";
   var hoyStr=fmtF();
-  var pend=ST.pedidos.filter(p=>p.estado==="despachado"&&p.factura&&p.entrega&&p.entrega.estado!=="entregado");
+  var pend=ST.pedidos.filter(p=>p.estado==="despachado"&&p.factura&&(!p.entrega||p.entrega.estado!=="entregado"));
   var entregadosHoy=ST.pedidos.filter(p=>p.entrega&&p.entrega.estado==="entregado"&&p.entrega.fechaEntrega===hoyStr);
-  var histEnt=ST.pedidos.filter(p=>p.entrega&&p.entrega.estado==="entregado");
-  histEnt.sort((a,b)=>{var sk=s=>{var p=(s||"").split("/");return p.length===3?p[2]+p[1]+p[0]:s||""};return sk(b.entrega?.fechaEntrega||"").localeCompare(sk(a.entrega?.fechaEntrega||""));});
   var yo=pend.filter(p=>p.entrega?.responsable!=="bodega");
   var bod=pend.filter(p=>p.entrega?.responsable==="bodega");
-  var totalHistEnt=histEnt.reduce((s,p)=>s+(p.montoConIVA||p.monto||0),0);
   return`<div class="fade">
   <div style="background:${CO};padding:20px 16px 16px;">
     <div style="display:flex;align-items:center;justify-content:space-between;">
@@ -1754,36 +1485,6 @@ function htmlEntregas(){
         padding:7px 12px;color:${CW};font-size:13px;cursor:pointer;">← Volver</button>
     </div>
   </div>
-  ${vistaToggle("vistaEntregas",vista)}
-  ${vista==="historial"?`
-  <div style="padding:14px 14px 80px;">
-    <div style="background:#FFF7ED;border-radius:12px;padding:11px 14px;margin-bottom:14px;
-      display:flex;justify-content:space-between;align-items:center;">
-      <div style="font-size:13px;color:${CO};font-weight:700;">Total entregado · ${histEnt.length} pedido${histEnt.length!==1?"s":""}</div>
-      <div style="font-size:18px;font-weight:800;color:${CO};">${fmtM(totalHistEnt)}</div>
-    </div>
-    ${histEnt.length===0?`<div style="text-align:center;padding:40px;color:#94A3B8;">Sin entregas registradas</div>`:""}
-    ${histEnt.map(p=>`<div style="background:${CW};border-radius:12px;padding:12px;margin-bottom:7px;
-      box-shadow:0 1px 3px rgba(0,0,0,0.06);border-left:4px solid ${CG};">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-        <div style="flex:1;min-width:0;">
-          <div style="font-size:14px;font-weight:700;color:${CN};">${h(p.cliente)}</div>
-          <div style="font-size:11px;color:#64748B;margin-top:2px;">
-            ${p.entrega?.fechaEntrega?"✓ "+h(p.entrega.fechaEntrega)+" · ":""}${fmtNota(p.numeroNota)} · ${h(p.sistema||"")}
-          </div>
-          <div style="font-size:11px;color:#64748B;">${p.entrega?.responsable==="bodega"?"🏭 Bodega":p.entrega?.responsable==="vendedor"?"🚗 Yo entregué":"✓ Entregado"}</div>
-        </div>
-        <div style="text-align:right;flex-shrink:0;margin-left:10px;">
-          <div style="font-size:14px;font-weight:700;color:${CN};">${fmtM(p.montoConIVA||p.monto)}</div>
-          <div style="font-size:10px;color:${CG};font-weight:700;">Entregado ✓</div>
-        </div>
-      </div>
-      ${p.fotoEntrega?`<div style="margin-top:8px;">
-        <img src="${h(p.fotoEntrega)}" style="width:100%;border-radius:8px;max-height:120px;object-fit:cover;"/>
-      </div>`:""}
-    </div>`).join("")}
-  </div>
-  `:`
   <div style="padding:14px 14px 80px;">
     ${pend.length===0?`<div style="text-align:center;padding:40px 20px 20px;color:#94A3B8;">
       <div style="font-size:40px;margin-bottom:12px;">✅</div>
@@ -1800,7 +1501,8 @@ function htmlEntregas(){
       style="width:100%;background:#25D366;border:none;border-radius:12px;padding:12px;
       color:${CW};font-size:14px;font-weight:700;cursor:pointer;margin-top:8px;">
       📲 Enviar lista a bodega por WhatsApp</button>`:""}
-    ${entregadosHoy.length>0?`<details style="margin-top:16px;">
+
+    ${entregadosHoy.length>0?`<details style="margin-top:16px;" ontoggle="this.open&&this.querySelector('summary').textContent.startsWith('▶')&&(this.querySelector('summary').textContent=this.querySelector('summary').textContent.replace('▶','▼'))">
       <summary style="font-size:12px;font-weight:800;color:${CG};text-transform:uppercase;
         letter-spacing:0.6px;list-style:none;cursor:pointer;padding:10px 0;
         display:flex;align-items:center;gap:6px;">
@@ -1811,7 +1513,7 @@ function htmlEntregas(){
           <div style="display:flex;justify-content:space-between;align-items:flex-start;">
             <div style="flex:1;min-width:0;">
               <div style="font-size:14px;font-weight:700;color:${CN};">${h(p.cliente)}</div>
-              <div style="font-size:11px;color:#64748B;margin-top:2px;">${fmtNota(p.numeroNota)} · ${h(p.sistema||"")} · ${h(p.entrega?.responsable==="bodega"?"Bodega":p.entrega?.responsable==="vendedor"?"Yo":"—")}</div>
+              <div style="font-size:11px;color:#64748B;margin-top:2px;">${fmtNota(p.numeroNota)} · ${h(p.sistema||"")} · ${h(p.entrega?.responsable==="bodega"?"Bodega":"Yo")}</div>
               ${p.notas?`<div style="font-size:11px;color:${CA};margin-top:2px;">📝 ${h(p.notas)}</div>`:""}
             </div>
             <div style="text-align:right;flex-shrink:0;margin-left:10px;">
@@ -1825,9 +1527,7 @@ function htmlEntregas(){
         </div>`).join("")}
       </div>
     </details>`:""}
-  </div>
-  `}
-  </div>`;
+  </div></div>`;
 }
 
 function entregaCard(p){
@@ -1864,19 +1564,17 @@ function entregaCard(p){
 }
 
 async function marcarEntregado(id,fotoB64){
-  var p=ST.pedidos.find(x=>x.id===id);
-  if(!p||p.estado!=="despachado"||!p.factura){toast("Pedido no válido para entrega",CR);return;}
-  var upd={"entrega.estado":"entregado","entrega.fechaEntrega":fmtF(),
-    estado:"entregado",ts:firebase.firestore.FieldValue.serverTimestamp()};
+  var upd={estado:"entregado","entrega.estado":"entregado","entrega.fechaEntrega":fmtF(),
+    ts:firebase.firestore.FieldValue.serverTimestamp()};
   if(fotoB64) upd.fotoEntrega=fotoB64;
   try{
     await db.collection("pedidos").doc(id).update(upd);
     var idx=ST.pedidos.findIndex(p=>p.id===id);
     if(idx>=0){
+      ST.pedidos[idx].estado="entregado";
       if(!ST.pedidos[idx].entrega) ST.pedidos[idx].entrega={};
       ST.pedidos[idx].entrega.estado="entregado";
       ST.pedidos[idx].entrega.fechaEntrega=fmtF();
-      ST.pedidos[idx].estado="entregado";
       if(fotoB64) ST.pedidos[idx].fotoEntrega=fotoB64;
     }
     toast(fotoB64?"✓ Entregado con foto guardada":"✓ Marcado como entregado",CG);render();
@@ -1891,18 +1589,17 @@ async function marcarEntregadoConFoto(id,file){
 }
 
 function compartirListaBodega(){
-  var bod=ST.pedidos.filter(p=>p.estado==="despachado"&&p.factura&&p.entrega&&p.entrega.responsable==="bodega");
+  var bod=ST.pedidos.filter(p=>p.estado==="despachado"&&p.factura&&(!p.entrega||p.entrega.estado!=="entregado")&&(p.entrega?.responsable==="bodega"));
   if(bod.length===0){toast("No hay entregas de bodega pendientes",CA);return;}
   var txt="*📦 Lista de Entregas — Bodega*\n"+fmtF()+"\n\n";
   bod.forEach((p,i)=>{
     txt+=(i+1)+". *"+p.cliente+"*\n";
-    txt+="   Pedido: "+fmtNota(p.numeroNota)+" · "+fmtM(p.montoConIVA||p.monto)+"\n";
+    txt+="   Nota: "+fmtNota(p.numeroNota)+" · "+fmtM(p.montoConIVA||p.monto)+"\n";
     if(p.notas) txt+="   Nota: "+p.notas+"\n";
     txt+="\n";
   });
   txt+="_Enviado desde La Clínica Ruta_";
-  var waBodega=wa(getConfig().waBodega||"");
-  var url=(waBodega?waBodega:"https://wa.me")+"?text="+encodeURIComponent(txt);
+  var url="https://wa.me/?text="+encodeURIComponent(txt);
   window.open(url,"_blank");
 }
 
@@ -1915,7 +1612,7 @@ function debClAdmin(v){
     var q=v.toLowerCase();
     var filtro=ST.filtroClientes||"todos";
     var todos=ST.clientes.filter(c=>c.estado!=="inactivo");
-    var inactivos21=todos.filter(c=>{var peds=ST.pedidos.filter(p=>p.clienteId===c.id&&p.estado!=="cancelado").sort((a,b)=>skF(b.fecha).localeCompare(skF(a.fecha)));if(!peds.length)return true;var d=diasDesde(peds[0].fecha);return d!==null&&d>=21;});
+    var inactivos21=todos.filter(c=>{var peds=ST.pedidos.filter(p=>p.clienteId===c.id);if(!peds.length)return true;var d=diasDesde(peds[0].fecha);return d!==null&&d>=21;});
     var conDeuda=todos.filter(c=>(c.pendiente||0)>0.01);
     var lista=filtro==="inactivos"?inactivos21:filtro==="deuda"?conDeuda:todos;
     if(q) lista=lista.filter(c=>(c.nombre||"").toLowerCase().includes(q)||(c.encargado||"").toLowerCase().includes(q)||(c.zona||"").toLowerCase().includes(q));
@@ -1944,7 +1641,7 @@ function buildCladminCards(lista,inactivos21){
           ${c.cedula?`<div style="font-size:10px;color:#94A3B8;">CI: ${h(c.cedula)}</div>`:""}
         </div>
         <div style="text-align:right;flex-shrink:0;margin-left:10px;">
-          ${(c.pendiente||0)>0?`<span style="background:#FEE2E2;color:${CR};font-size:10px;font-weight:800;padding:2px 8px;border-radius:20px;display:inline-block;margin-bottom:4px;">💳 ${fmtM(c.pendiente)}</span>`:""}
+          ${(c.pendiente||0)>0?`<div style="color:${CR};font-size:12px;font-weight:700;">${fmtM(c.pendiente)}</div>`:""}
           <div style="display:flex;gap:5px;margin-top:5px;">
             <button onclick="editCl('${c.id}')"
               style="background:#F1F5F9;border:none;border-radius:7px;padding:5px 9px;font-size:12px;cursor:pointer;">✏️</button>
@@ -1963,7 +1660,7 @@ function htmlClientesAdmin(){
   var q=(ST.searchClAdmin||"").toLowerCase();
   var todos=ST.clientes.filter(c=>c.estado!=="inactivo").sort((a,b)=>(a.nombre||"").localeCompare(b.nombre||""));
   var inactivos21=todos.filter(c=>{
-    var peds=ST.pedidos.filter(p=>p.clienteId===c.id&&p.estado!=="cancelado").sort((a,b)=>skF(b.fecha).localeCompare(skF(a.fecha)));
+    var peds=ST.pedidos.filter(p=>p.clienteId===c.id);
     if(!peds.length) return true;
     var d=diasDesde(peds[0].fecha);
     return d!==null&&d>=21;
@@ -1977,7 +1674,6 @@ function htmlClientesAdmin(){
       <span style="position:absolute;left:11px;top:50%;transform:translateY(-50%);font-size:13px;">🔍</span>
       <input id="s_cladmin" type="text" placeholder="Buscar por nombre, encargado, zona..."
         value="${h(ST.searchClAdmin||"")}" oninput="debClAdmin(this.value)"
-        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
         style="width:100%;border:2px solid #E2E8F0;border-radius:10px;padding:9px 12px 9px 33px;font-size:13px;outline:none;"/>
     </div>
     <div style="overflow-x:auto;white-space:nowrap;">
@@ -2061,7 +1757,6 @@ function htmlProspectos(){
       <span style="position:absolute;left:11px;top:50%;transform:translateY(-50%);font-size:14px;">🔍</span>
       <input id="s_prosp" type="text" placeholder="Buscar prospecto..."
         value="${h(ST.searchProspecto||"")}" oninput="debProspecto(this.value)"
-        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
         style="width:100%;background:rgba(255,255,255,0.1);border:none;border-radius:10px;
         padding:10px 12px 10px 33px;color:${CW};font-size:13px;outline:none;"/>
     </div>
@@ -2103,33 +1798,23 @@ function debGasto(v){
 function buildGastoCards(lista){
   if(!lista.length) return`<div style="text-align:center;padding:48px;color:#94A3B8;">Sin gastos</div>`;
   return lista.map(g=>`<div style="background:${CW};border-radius:12px;padding:12px;margin-bottom:7px;
-    box-shadow:0 1px 3px rgba(0,0,0,0.06);">
-    <div style="display:flex;justify-content:space-between;align-items:center;">
-      <div style="flex:1;min-width:0;">
-        <div style="font-size:14px;font-weight:700;color:${CN};">${h(g.tipo||"")}</div>
-        <div style="font-size:11px;color:#64748B;">${h(g.descripcion||"")} · ${h(g.fecha||"")}</div>
-        <div style="display:flex;gap:5px;margin-top:3px;flex-wrap:wrap;">
-          ${g.asume==="empresa"?`<span style="font-size:10px;background:#DBEAFE;color:${CB};border-radius:5px;padding:1px 6px;font-weight:700;">Empresa</span>`:`<span style="font-size:10px;background:#F1F5F9;color:#64748B;border-radius:5px;padding:1px 6px;font-weight:700;">Vendedor</span>`}
-          ${g.reembolso?`<span style="font-size:10px;background:${g.reembolsoEstado==="pagado"?"#DCFCE7":"#FEF3C7"};color:${g.reembolsoEstado==="pagado"?CG:"#92400E"};border-radius:5px;padding:1px 6px;font-weight:700;">${g.reembolsoEstado==="pagado"?"✓ Reembolsado":"⏳ Pend. reembolso"}</span>`:""}
-        </div>
+    box-shadow:0 1px 3px rgba(0,0,0,0.06);display:flex;justify-content:space-between;align-items:center;">
+    <div style="flex:1;min-width:0;">
+      <div style="font-size:14px;font-weight:700;color:${CN};">${h(g.tipo||"")}</div>
+      <div style="font-size:11px;color:#64748B;">${h(g.descripcion||"")} · ${h(g.fecha||"")}</div>
+      <div style="display:flex;gap:5px;margin-top:3px;flex-wrap:wrap;">
+        ${g.asume==="empresa"?`<span style="font-size:10px;background:#DBEAFE;color:${CB};border-radius:5px;padding:1px 6px;font-weight:700;">Empresa</span>`:`<span style="font-size:10px;background:#F1F5F9;color:#64748B;border-radius:5px;padding:1px 6px;font-weight:700;">Vendedor</span>`}
+        ${g.reembolso?`<span style="font-size:10px;background:${g.reembolsoEstado==="pagado"?"#DCFCE7":"#FEF3C7"};color:${g.reembolsoEstado==="pagado"?CG:"#92400E"};border-radius:5px;padding:1px 6px;font-weight:700;">${g.reembolsoEstado==="pagado"?"✓ Reembolsado":"⏳ Pend. reembolso"}</span>`:""}
       </div>
-      <div style="font-size:15px;font-weight:800;color:${CR};flex-shrink:0;margin-left:8px;">${fmtM(g.monto)}</div>
     </div>
-    ${g.foto?`<img src="${g.foto}" style="width:100%;max-height:120px;object-fit:cover;border-radius:8px;margin-top:8px;" />`:""}
+    <div style="font-size:15px;font-weight:800;color:${CR};flex-shrink:0;margin-left:8px;">${fmtM(g.monto)}</div>
   </div>`).join("");
 }
 function htmlGastos(){
   var hoyStr=fmtF();
   var filtroG=ST.filtroGasto||"todos";
   var q=(ST.searchGasto||"").toLowerCase();
-  var now=new Date();
-  var mesNowG=now.getMonth()+1,anioNowG=now.getFullYear();
-  // Inicio de semana (lunes)
-  var dow=now.getDay();var lunesDate=new Date(now);lunesDate.setDate(now.getDate()-(dow===0?6:dow-1));
-  var lunesStr=`${String(lunesDate.getDate()).padStart(2,"0")}/${String(lunesDate.getMonth()+1).padStart(2,"0")}/${lunesDate.getFullYear()}`;
   var totalHoy=ST.gastos.filter(g=>g.fecha===hoyStr).reduce((s,g)=>s+(g.monto||0),0);
-  var totalSem=ST.gastos.filter(g=>{var pts=(g.fecha||"").split("/");if(pts.length!==3)return false;var d=new Date(parseInt(pts[2]),parseInt(pts[1])-1,parseInt(pts[0]));return d>=lunesDate&&d<=now;}).reduce((s,g)=>s+(g.monto||0),0);
-  var totalMes=ST.gastos.filter(g=>{var pts=(g.fecha||"").split("/");return pts.length===3&&parseInt(pts[1])===mesNowG&&parseInt(pts[2])===anioNowG;}).reduce((s,g)=>s+(g.monto||0),0);
   var pendReembolso=ST.gastos.filter(g=>g.reembolso&&g.reembolsoEstado!=="pagado").reduce((s,g)=>s+(g.monto||0),0);
   var lista=ST.gastos.filter(g=>{
     if(filtroG==="hoy"&&g.fecha!==hoyStr) return false;
@@ -2141,24 +1826,14 @@ function htmlGastos(){
   var chips=[["todos","Todos"],["hoy","Hoy"],["empresa","Empresa"],["reembolso","Reembolsables"]];
   return`<div class="fade">${subHeader("Gastos de Ruta","💸")}
   <div style="padding:14px 14px 80px;">
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px;">
-      <div style="background:${CN};border-radius:13px;padding:11px;text-align:center;">
-        <div style="font-size:10px;color:rgba(255,255,255,0.65);">Hoy</div>
-        <div style="font-size:18px;font-weight:800;color:${CW};">${fmtM(totalHoy)}</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
+      <div style="background:${CN};border-radius:13px;padding:13px;text-align:center;">
+        <div style="font-size:11px;color:rgba(255,255,255,0.65);">Gastos hoy</div>
+        <div style="font-size:22px;font-weight:800;color:${CW};">${fmtM(totalHoy)}</div>
       </div>
-      <div style="background:#1E3A5F;border-radius:13px;padding:11px;text-align:center;">
-        <div style="font-size:10px;color:rgba(255,255,255,0.65);">Semana</div>
-        <div style="font-size:18px;font-weight:800;color:${CW};">${fmtM(totalSem)}</div>
-      </div>
-      <div style="background:#152C4A;border-radius:13px;padding:11px;text-align:center;">
-        <div style="font-size:10px;color:rgba(255,255,255,0.65);">Mes</div>
-        <div style="font-size:18px;font-weight:800;color:${CW};">${fmtM(totalMes)}</div>
-      </div>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr;gap:8px;margin-bottom:12px;">
-      <div style="background:${pendReembolso>0?CA:CG};border-radius:13px;padding:11px;text-align:center;">
-        <div style="font-size:10px;color:rgba(255,255,255,0.65);">Pendiente reembolso</div>
-        <div style="font-size:18px;font-weight:800;color:${CW};">${fmtM(pendReembolso)}</div>
+      <div style="background:${pendReembolso>0?CA:CG};border-radius:13px;padding:13px;text-align:center;">
+        <div style="font-size:11px;color:rgba(255,255,255,0.65);">Pend. reembolso</div>
+        <div style="font-size:22px;font-weight:800;color:${CW};">${fmtM(pendReembolso)}</div>
       </div>
     </div>
     <div style="overflow-x:auto;white-space:nowrap;margin-bottom:10px;">
@@ -2171,7 +1846,6 @@ function htmlGastos(){
       <span style="position:absolute;left:11px;top:50%;transform:translateY(-50%);font-size:14px;">🔍</span>
       <input id="s_gasto" type="text" placeholder="Buscar tipo o descripción..."
         value="${h(ST.searchGasto||"")}" oninput="debGasto(this.value)"
-        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
         style="width:100%;border:2px solid #E2E8F0;border-radius:10px;
         padding:10px 12px 10px 33px;font-size:13px;outline:none;"/>
     </div>
@@ -2197,34 +1871,51 @@ function debDev(v){
     if(el) el.innerHTML=buildDevCards(lista);
   },300);
 }
+async function cambiarEstadoDev(id,nuevoEstado){
+  if(!confirm("¿Cambiar estado a "+nuevoEstado+"?")) return;
+  try{
+    await db.collection("devoluciones").doc(id).update({estado:nuevoEstado,ts:firebase.firestore.FieldValue.serverTimestamp()});
+    var idx=ST.devoluciones.findIndex(x=>x.id===id);
+    if(idx>=0) ST.devoluciones[idx].estado=nuevoEstado;
+    toast("✓ Estado actualizado",CG);render();
+  }catch(e){toast("Error: "+e.message,CR);}
+}
 function buildDevCards(lista){
   if(!lista.length) return`<div style="text-align:center;padding:48px;color:#94A3B8;">Sin devoluciones</div>`;
-  var colorEstado={Pendiente:CA,Cambiado:CG,Rechazado:CR,pendiente:CA,resuelto:CG,rechazado:CR,proceso:CB};
+  var colorEstado={pendiente:CA,Pendiente:CA,resuelto:CG,rechazado:CR,proceso:CB};
   return lista.map(d=>{
-    var estadoKey=d.estado||"Pendiente";
-    var colE=colorEstado[estadoKey]||CA;
+    var pedVin=d.pedidoId?ST.pedidos.find(x=>x.id===d.pedidoId):null;
+    var esPend=d.estado==="pendiente"||d.estado==="Pendiente";
     return`<div style="background:${CW};border-radius:12px;padding:12px;margin-bottom:7px;
-    box-shadow:0 1px 3px rgba(0,0,0,0.06);border-left:4px solid ${colE};">
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;">
-      <div style="flex:1;min-width:0;">
-        <div style="font-size:14px;font-weight:700;color:${CN};">${h(d.cliente||"")}</div>
-        <div style="font-size:11px;color:#64748B;">${h(d.producto||"")}${d.cantidad?" · "+d.cantidad+"u":""} · ${h(d.fecha||"")}</div>
-        ${d.motivo?`<div style="font-size:11px;color:${CA};margin-top:2px;">↩️ ${h(d.motivo)}</div>`:""}
-        ${d.productoReemplazo?`<div style="font-size:11px;color:${CG};margin-top:2px;">🔄 ${h(d.productoReemplazo)}${d.valorReemplazo?` — ${fmtM(d.valorReemplazo)}`:""}</div>`:""}
-        ${d.notas?`<div style="font-size:11px;color:#64748B;margin-top:2px;">📝 ${h(d.notas)}</div>`:""}
+      box-shadow:0 1px 3px rgba(0,0,0,0.06);border-left:4px solid ${colorEstado[d.estado||"pendiente"]||CA};">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;">
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:14px;font-weight:700;color:${CN};">${h(d.cliente||"")}</div>
+          <div style="font-size:11px;color:#64748B;">${h(d.producto||"")}${d.cantidad?" · "+d.cantidad+"u":""} · ${h(d.fecha||"")}</div>
+          ${d.motivo?`<div style="font-size:11px;color:${CA};margin-top:2px;">↩️ ${h(d.motivo)}</div>`:""}
+          ${pedVin?`<div style="font-size:11px;color:${CB};margin-top:2px;">📋 Pedido ${fmtNota(pedVin.numeroNota)} · ${h(pedVin.fecha||"")}</div>`:""}
+          ${d.notas?`<div style="font-size:11px;color:#64748B;margin-top:2px;">📝 ${h(d.notas)}</div>`:""}
+        </div>
+        <div style="text-align:right;flex-shrink:0;margin-left:8px;">
+          ${d.monto?`<div style="font-size:14px;font-weight:700;color:${CR};">${fmtM(d.monto)}</div>`:""}
+          <div style="background:${colorEstado[d.estado||"pendiente"]||CA};color:${CW};border-radius:7px;
+            padding:2px 8px;font-size:10px;font-weight:700;margin-top:3px;">${h(d.estado||"pendiente")}</div>
+        </div>
       </div>
-      <div style="text-align:right;flex-shrink:0;margin-left:8px;">
-        ${d.monto?`<div style="font-size:14px;font-weight:700;color:${CR};">${fmtM(d.monto)}</div>`:""}
-        <div style="background:${colE};color:${CW};border-radius:7px;
-          padding:2px 8px;font-size:10px;font-weight:700;margin-top:3px;">${h(estadoKey)}</div>
-      </div>
-    </div>
-    ${d.foto?`<img src="${d.foto}" style="width:100%;max-height:140px;object-fit:cover;border-radius:8px;margin-top:4px;" />`:""}
-  </div>`;}).join("");
+      ${esPend?`<div style="display:flex;gap:6px;margin-top:6px;">
+        <button onclick="cambiarEstadoDev('${d.id}','resuelto')"
+          style="flex:1;background:${CG};border:none;border-radius:8px;padding:7px;
+          color:${CW};font-size:11px;font-weight:700;cursor:pointer;">✓ Resuelto</button>
+        <button onclick="cambiarEstadoDev('${d.id}','rechazado')"
+          style="flex:1;background:${CR};border:none;border-radius:8px;padding:7px;
+          color:${CW};font-size:11px;font-weight:700;cursor:pointer;">✗ Rechazar</button>
+      </div>`:""}
+    </div>`;
+  }).join("");
 }
 function htmlDevoluciones(){
   var q=(ST.searchDev||"").toLowerCase();
-  var pendientes=ST.devoluciones.filter(d=>d.estado!=="resuelto");
+  var pendientes=ST.devoluciones.filter(d=>d.estado==="pendiente"||d.estado==="Pendiente"||d.estado==="proceso");
   var lista=ST.devoluciones.filter(d=>
     !q||(d.cliente||"").toLowerCase().includes(q)||
     (d.producto||"").toLowerCase().includes(q)||
@@ -2243,12 +1934,8 @@ function htmlDevoluciones(){
       <span style="position:absolute;left:11px;top:50%;transform:translateY(-50%);font-size:14px;">🔍</span>
       <input id="s_dev" type="text" placeholder="Buscar por cliente o producto..."
         value="${h(ST.searchDev||"")}" oninput="debDev(this.value)"
-        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
         style="width:100%;border:2px solid #E2E8F0;border-radius:10px;
         padding:10px 12px 10px 33px;font-size:13px;outline:none;"/>
-    </div>
-    <div style="background:#FEF3C7;border:1px solid #FCD34D;border-radius:10px;padding:10px 12px;margin-bottom:10px;font-size:12px;font-weight:700;color:#92400E;">
-      ⚠️ No se devuelve dinero. Solo cambio por producto de igual o mayor valor.
     </div>
     <button onclick="setState({modal:{tipo:'nuevaDev'}})"
       style="width:100%;background:${CN};border:none;border-radius:13px;padding:13px;
@@ -2297,7 +1984,7 @@ function buildCatAdminCards(lista){
           style="background:${p.disponible==="Sin stock"?"#FEE2E2":"#DCFCE7"};border:none;border-radius:7px;
           padding:5px 9px;font-size:11px;font-weight:600;cursor:pointer;
           color:${p.disponible==="Sin stock"?CR:CG};">
-          ${p.disponible==="Sin stock"?"Inactivo":"Activo"}</button>
+          ${p.disponible==="Sin stock"?"Sin stock":"OK"}</button>
       </div>
     </div>
   </div>`).join("");
@@ -2318,7 +2005,6 @@ function htmlCatalogoAdmin(){
       <span style="position:absolute;left:11px;top:50%;transform:translateY(-50%);font-size:14px;">🔍</span>
       <input id="s_cat_admin" type="text" placeholder="Buscar producto o código..."
         value="${h(ST.searchCatAdmin||"")}" oninput="debCatAdmin(this.value)"
-        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
         style="width:100%;background:rgba(255,255,255,0.1);border:none;border-radius:10px;
         padding:10px 12px 10px 33px;color:${CW};font-size:13px;outline:none;"/>
     </div>
@@ -2330,17 +2016,9 @@ function htmlCatalogoAdmin(){
     </div>
   </div>
   <div style="padding:14px 14px 80px;">
-    <div style="display:flex;gap:8px;margin-bottom:14px;">
-      <button onclick="setState({modal:{tipo:'nuevoProducto'}})"
-        style="flex:1;background:${CN};border:none;border-radius:13px;padding:13px;
-        color:${CW};font-size:14px;font-weight:700;cursor:pointer;">+ Nuevo</button>
-      <label style="flex:1;cursor:pointer;">
-        <div style="background:#2563EB;border:none;border-radius:13px;padding:13px;
-          color:${CW};font-size:14px;font-weight:700;text-align:center;">📥 Importar CSV/Excel</div>
-        <input type="file" accept=".xlsx,.csv" onchange="importarCatalogo(event)" style="display:none;"/>
-      </label>
-    </div>
-    <div id="imp_cat_res2" style="font-size:12px;color:#64748B;margin-bottom:8px;"></div>
+    <button onclick="setState({modal:{tipo:'nuevoProducto'}})"
+      style="width:100%;background:${CN};border:none;border-radius:13px;padding:13px;
+      color:${CW};font-size:15px;font-weight:700;cursor:pointer;margin-bottom:14px;">+ Nuevo Producto</button>
     <div id="cat_admin_lista">${buildCatAdminCards(lista)}</div>
   </div></div>`;
 }
@@ -2383,7 +2061,7 @@ function htmlModal(){
   if(!m) return"";
   var c="";
   if(m.tipo==="tarifas")        c=mTarifas(m.prod);
-  if(m.tipo==="cobrarCliente")  c=mCobrarCliente(m.clienteId);
+  if(m.tipo==="cobrar")         c=mCobrar(m.pedido);
   if(m.tipo==="nuevoCliente")   c=mNuevoCliente();
   if(m.tipo==="editarCliente")  c=mEditarCliente(m.cliente);
   if(m.tipo==="guardarPedido")  c=mGuardarPedido();
@@ -2392,23 +2070,13 @@ function htmlModal(){
   if(m.tipo==="nuevoProspecto") c=mNuevoProspecto();
   if(m.tipo==="nuevoGasto")     c=mNuevoGasto();
   if(m.tipo==="nuevaDev")       c=mNuevaDev();
-  if(m.tipo==="nuevoPendiente")      c=mNuevoPendiente();
-  if(m.tipo==="completarPendiente")  c=mCompletarPendiente(m.pend);
-  if(m.tipo==="verNota")             c=mVerNota(m.pedido);
+  if(m.tipo==="nuevoPendiente") c=mNuevoPendiente();
+  if(m.tipo==="verNota")        c=mVerNota(m.pedido);
   if(m.tipo==="nuevoClienteDesdeProspecto") c=mNuevoClienteDesdeProspecto(m.prospecto);
   if(m.tipo==="cierreDia")      c=mCierreDia();
   if(m.tipo==="fichaCliente")   c=mFichaCliente(m.cliente);
   if(m.tipo==="despachar")      c=mDespachar(m.pedido);
   if(m.tipo==="acuerdo")        c=mAcuerdo(m.pedido);
-  if(isDesktop())
-    return`<div onclick="if(event.target===this)setState({modal:null})"
-      style="position:fixed;inset:0;background:rgba(0,0,0,0.52);z-index:500;
-      display:flex;align-items:center;justify-content:center;">
-      <div style="background:${CW};border-radius:18px;padding:28px 24px;
-        width:600px;max-width:90vw;max-height:88vh;overflow-y:auto;">
-        ${c}
-      </div>
-    </div>`;
   return`<div onclick="if(event.target===this)setState({modal:null})"
     style="position:fixed;inset:0;background:rgba(0,0,0,0.48);z-index:500;
     display:flex;align-items:flex-end;justify-content:center;">
@@ -2424,7 +2092,7 @@ function mHeader(title){
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
     <h3 style="font-size:17px;font-weight:800;color:${CN};margin:0;">${title}</h3>
     <button onclick="setState({modal:null})"
-      style="background:#F1F5F9;border:none;border-radius:9px;padding:11px 14px;min-height:44px;
+      style="background:#F1F5F9;border:none;border-radius:9px;padding:6px 12px;
       font-size:16px;cursor:pointer;color:#64748B;font-weight:700;line-height:1;">✕</button>
   </div>`;
 }
@@ -2451,219 +2119,149 @@ function mTarifas(prod){
     style="width:100%;background:${CN};border:none;border-radius:13px;padding:13px;
     color:${CW};font-size:15px;font-weight:700;cursor:pointer;margin-top:8px;">Cerrar</button>`;
 }
-// modal: cobrar cliente (multi-factura) ───────────────────────────
-function mCobrarCliente(cId){
-  var cli=ST.clientes.find(x=>x.id===cId)||{};
-  var pendientes=ST.pedidos.filter(p=>p.clienteId===cId&&(p.saldoPendiente||0)>0.01)
-    .sort((a,b)=>(a.fecha||"").localeCompare(b.fecha||""));
-  if(!pendientes.length) return`${mHeader("💵 Cobrar")}
-    <div style="text-align:center;padding:24px;color:#94A3B8;">Sin deudas pendientes para ${h(cli.nombre||"este cliente")}</div>`;
-  var totalPend=pendientes.reduce((s,p)=>s+(p.saldoPendiente||0),0);
-  return`${mHeader("💵 Cobrar")}
-  <div style="background:#F8FAFC;border-radius:10px;padding:11px;margin-bottom:12px;">
-    <div style="font-size:15px;font-weight:800;color:${CN};">${h(cli.nombre||"")}</div>
-    ${cli.encargado?`<div style="font-size:12px;color:#64748B;">${h(cli.encargado)}${cli.cedula?" · CI: "+h(cli.cedula):""}</div>`:""}
-    <div style="font-size:13px;font-weight:700;color:${CR};margin-top:4px;">Total deuda: ${fmtM(totalPend)}</div>
-  </div>
-  <div id="cb6_facturas" style="margin-bottom:12px;">
-    ${pendientes.map(p=>`<div onclick="toggleFacturaCobro(this)" data-id="${p.id}" data-saldo="${(p.saldoPendiente||0).toFixed(2)}" data-sel="0"
-      style="display:flex;align-items:center;gap:10px;
-      padding:10px 12px;background:${CW};border-radius:11px;margin-bottom:7px;
-      border:2px solid #E2E8F0;cursor:pointer;transition:border-color 0.15s;">
-      <div class="cb6_circle" style="width:24px;height:24px;min-width:24px;border-radius:50%;
-        border:2px solid #CBD5E1;background:${CW};display:flex;align-items:center;
-        justify-content:center;font-size:13px;transition:all 0.15s;"></div>
-      <div style="flex:1;min-width:0;">
-        <div style="font-size:13px;font-weight:700;color:${CN};">
-          ${p.factura?"Factura "+h(p.factura):fmtNota(p.numeroNota)}</div>
-        <div style="font-size:11px;color:#64748B;">${h(p.fecha||"")} · ${h(p.sistema||"")}</div>
-      </div>
-      <div style="font-size:14px;font-weight:800;color:${CR};flex-shrink:0;">${fmtM(p.saldoPendiente)}</div>
-    </div>`).join("")}
-  </div>
-  <div style="background:#F0FDF4;border-radius:11px;padding:11px 14px;margin-bottom:14px;
-    display:flex;justify-content:space-between;align-items:center;">
-    <span style="font-size:12px;font-weight:700;color:#64748B;text-transform:uppercase;">Total seleccionado</span>
-    <span id="cb6_total" style="font-size:22px;font-weight:800;color:${CG};">$0.00</span>
-  </div>
-  <input type="hidden" id="cb6_modo_hid" value="cobrar"/>
-  <div id="cb6_modo_abonar" style="display:none;margin-bottom:12px;">
-    <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:6px;">Monto a abonar</label>
-    <input id="cb6_monto" type="number" step="0.01" placeholder="0.00"
-      style="width:100%;border:2px solid ${CB};border-radius:11px;padding:13px;
-      font-size:22px;font-weight:800;outline:none;"/>
-  </div>
-  <div id="cb6_modo_acuerdo" style="display:none;margin-bottom:12px;">
-    <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:6px;">¿Para cuándo promete pagar?</label>
-    <input id="cb6_fecha" type="date"
-      style="width:100%;border:2px solid ${CA};border-radius:11px;padding:12px;font-size:15px;outline:none;margin-bottom:8px;"/>
-    <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Nota (opcional)</label>
-    <input id="cb6_nota" type="text" placeholder="Ej: pagará el lunes con transferencia"
-      style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:14px;outline:none;"/>
-  </div>
-  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px;margin-bottom:8px;">
-    <button onclick="procesarCobrarSel('${cId}')"
-      style="padding:12px 4px;border-radius:11px;border:2px solid ${CG};
-      background:#F0FDF4;color:${CG};font-weight:700;font-size:13px;cursor:pointer;">✓ COBRAR</button>
-    <button onclick="setCb6Modo('abonar')"
-      style="padding:12px 4px;border-radius:11px;border:2px solid ${CB};
-      background:#EFF6FF;color:${CB};font-weight:700;font-size:13px;cursor:pointer;">± ABONAR</button>
-    <button onclick="setCb6Modo('acuerdo')"
-      style="padding:12px 4px;border-radius:11px;border:1px solid ${CA};
-      background:#FFFBEB;color:${CA};font-weight:700;font-size:13px;cursor:pointer;">🤝 ACUERDO</button>
-  </div>
-  <div id="cb6_btn_confirmar" style="display:none;">
-    <button onclick="confirmarCb6('${cId}')"
-      style="width:100%;background:${CG};border:none;border-radius:13px;padding:13px;
-      color:${CW};font-size:15px;font-weight:700;cursor:pointer;">✓ Confirmar</button>
-  </div>`;
-}
-function setCb6Modo(modo){
-  var divAbon=$("cb6_modo_abonar"),divAcu=$("cb6_modo_acuerdo"),btnConf=$("cb6_btn_confirmar");
-  if(divAbon) divAbon.style.display=modo==="abonar"?"block":"none";
-  if(divAcu)  divAcu.style.display=modo==="acuerdo"?"block":"none";
-  if(btnConf) btnConf.style.display="block";
-  var hid=$("cb6_modo_hid");if(hid)hid.value=modo;
-}
-function toggleFacturaCobro(el){
-  var sel=el.dataset.sel==="1"?"0":"1";
-  el.dataset.sel=sel;
-  var circle=el.querySelector(".cb6_circle");
-  if(circle){
-    circle.style.background=sel==="1"?CG:CW;
-    circle.style.borderColor=sel==="1"?CG:"#CBD5E1";
-    circle.innerHTML=sel==="1"?`<svg width="12" height="12" viewBox="0 0 12 12"><polyline points="2,6 5,9 10,3" stroke="white" stroke-width="2" fill="none"/></svg>`:"";
+
+// modal: cobrar ───────────────────────────────────────────────────
+function setCbMode(m){
+  var hid=$("cb_mode");if(hid)hid.value=m;
+  var full=$("cb_btn_cobrar"),abon=$("cb_btn_abonar");
+  if(full&&abon){
+    if(m==="cobrar"){
+      full.style.cssText="flex:1;padding:10px;border-radius:10px;border:2px solid "+CG+";background:#F0FDF4;color:"+CG+";font-weight:700;font-size:13px;cursor:pointer;";
+      abon.style.cssText="flex:1;padding:10px;border-radius:10px;border:2px solid #E2E8F0;background:"+CW+";color:#64748B;font-weight:700;font-size:13px;cursor:pointer;";
+    } else {
+      abon.style.cssText="flex:1;padding:10px;border-radius:10px;border:2px solid "+CB+";background:#EFF6FF;color:"+CB+";font-weight:700;font-size:13px;cursor:pointer;";
+      full.style.cssText="flex:1;padding:10px;border-radius:10px;border:2px solid #E2E8F0;background:"+CW+";color:#64748B;font-weight:700;font-size:13px;cursor:pointer;";
+    }
   }
-  el.style.borderColor=sel==="1"?CG:"#E2E8F0";
-  el.style.background=sel==="1"?"#F0FDF4":CW;
-  recalcularCobro6();
+  // show/hide full amount hint
+  var mInp=$("cb_m");
+  var saldo=parseFloat(hid?.dataset?.saldo||0);
+  if(mInp){
+    if(m==="cobrar"){mInp.value=saldo.toFixed(2);}
+    else{mInp.value="";}
+    mInp.focus();
+  }
 }
-function recalcularCobro6(){
-  var total=0;
-  document.querySelectorAll("#cb6_facturas [data-sel='1']")
-    .forEach(c=>total+=parseFloat(c.dataset.saldo||0));
-  var el=$("cb6_total");
-  if(el){var v=total.toFixed(2);var p=v.split(".");el.textContent="$"+p[0].replace(/\B(?=(\d{3})+(?!\d))/g,",")+"."+p[1];}
+function mCobrar(p){
+  var cli=ST.clientes.find(x=>x.id===p.clienteId);
+  return`${mHeader("💵 Registrar Cobro")}
+  <div style="background:#F8FAFC;border-radius:10px;padding:11px;margin-bottom:12px;">
+    <div style="font-size:14px;font-weight:700;color:${CN};">${h(p.cliente)}</div>
+    ${cli?.cedula?`<div style="font-size:11px;color:#64748B;">CI: ${h(cli.cedula)}</div>`:""}
+    ${p.contactoFacturacion?`<div style="font-size:11px;color:#64748B;">Contacto: ${h(p.contactoFacturacion)}</div>`:""}
+    ${p.factura?`<div style="font-size:11px;color:${CB};font-weight:700;margin-top:3px;">Factura: ${h(p.factura)}</div>`:""}
+    <div style="font-size:11px;color:#64748B;margin-top:3px;">${h(p.fecha||"")} · ${h(p.sistema||"")}</div>
+  </div>
+  <div style="text-align:center;margin-bottom:12px;">
+    <div style="font-size:12px;color:#64748B;">Saldo pendiente</div>
+    <div style="font-size:28px;font-weight:800;color:${CR};">${fmtM(p.saldoPendiente)}</div>
+  </div>
+  <div style="display:flex;gap:7px;margin-bottom:12px;">
+    <button id="cb_btn_cobrar" onclick="setCbMode('cobrar')"
+      style="flex:1;padding:10px;border-radius:10px;border:2px solid ${CG};background:#F0FDF4;color:${CG};font-weight:700;font-size:13px;cursor:pointer;">
+      ✓ COBRAR todo</button>
+    <button id="cb_btn_abonar" onclick="setCbMode('abonar')"
+      style="flex:1;padding:10px;border-radius:10px;border:2px solid #E2E8F0;background:${CW};color:#64748B;font-weight:700;font-size:13px;cursor:pointer;">
+      ± ABONAR monto</button>
+    <button onclick="setState({modal:{tipo:'acuerdo',pedido:p}})"
+      style="flex:1;padding:10px;border-radius:10px;border:1px solid ${CA};background:#FFFBEB;color:${CA};font-weight:700;font-size:12px;cursor:pointer;">
+      🤝 Acuerdo</button>
+  </div>
+  <input type="hidden" id="cb_mode" value="cobrar" data-saldo="${(p.saldoPendiente||0).toFixed(2)}"/>
+  <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:6px;">Monto a cobrar / abonar</label>
+  <input id="cb_m" type="number" step="0.01" value="${(p.saldoPendiente||0).toFixed(2)}"
+    style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:13px;
+    font-size:22px;font-weight:800;outline:none;margin-bottom:14px;"/>
+  <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:6px;">Forma de pago</label>
+  <div style="display:flex;gap:7px;margin-bottom:14px;">
+    <button onclick="setForma('Efectivo')" id="fc_ef"
+      style="flex:1;padding:11px;border-radius:10px;border:2px solid ${CG};background:#F0FDF4;color:${CG};font-weight:700;cursor:pointer;">💵 Efectivo</button>
+    <button onclick="setForma('Transferencia')" id="fc_tr"
+      style="flex:1;padding:11px;border-radius:10px;border:2px solid #E2E8F0;background:${CW};color:#64748B;font-weight:700;cursor:pointer;">🏦 Transferencia</button>
+  </div>
+  <input type="hidden" id="cb_forma" value="Efectivo"/>
+  <div id="cb_ref_w" style="display:none;margin-bottom:14px;">
+    <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:6px;">Nro. de transferencia</label>
+    <input id="cb_ref" type="text" placeholder="Referencia"
+      style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:15px;outline:none;"/>
+  </div>
+  <div style="margin-bottom:14px;">
+    <label style="font-size:12px;font-weight:700;color:#64748B;display:block;margin-bottom:5px;">📷 Foto de comprobante (opcional)</label>
+    <label style="display:flex;align-items:center;gap:9px;cursor:pointer;
+      background:#F8FAFC;border:2px dashed #E2E8F0;border-radius:10px;padding:10px 12px;">
+      <span style="font-size:20px;">📷</span>
+      <span id="cb_flbl" style="font-size:12px;color:#64748B;">Tomar o adjuntar foto</span>
+      <input id="cb_foto" type="file" accept="image/*" capture="environment" style="display:none;"
+        onchange="var l=$('cb_flbl');if(this.files[0]){l.textContent='✓ '+this.files[0].name;l.style.color='${CG}';}"/>
+    </label>
+  </div>
+  <button onclick="procesarCobro('${p.id}')"
+    style="width:100%;background:${CG};border:none;border-radius:13px;padding:14px;
+    color:${CW};font-size:16px;font-weight:700;cursor:pointer;">✓ Procesar</button>`;
 }
-function confirmarCb6(cId){
-  var modo=$("cb6_modo_hid")?.value||"cobrar";
-  if(modo==="abonar") procesarAbonar6(cId);
-  else if(modo==="acuerdo") procesarAcuerdo6(cId);
-  else if(modo==="cobrar") procesarCobrarSel(cId);
+
+function setForma(f){
+  var ef=$("fc_ef"),tr=$("fc_tr"),hid=$("cb_forma"),wr=$("cb_ref_w");
+  if(!ef) return;
+  if(f==="Efectivo"){
+    ef.style.cssText="flex:1;padding:11px;border-radius:10px;border:2px solid "+CG+";background:#F0FDF4;color:"+CG+";font-weight:700;cursor:pointer;";
+    tr.style.cssText="flex:1;padding:11px;border-radius:10px;border:2px solid #E2E8F0;background:"+CW+";color:#64748B;font-weight:700;cursor:pointer;";
+    if(wr) wr.style.display="none";
+  } else {
+    tr.style.cssText="flex:1;padding:11px;border-radius:10px;border:2px solid "+CB+";background:#EFF6FF;color:"+CB+";font-weight:700;cursor:pointer;";
+    ef.style.cssText="flex:1;padding:11px;border-radius:10px;border:2px solid #E2E8F0;background:"+CW+";color:#64748B;font-weight:700;cursor:pointer;";
+    if(wr) wr.style.display="block";
+  }
+  if(hid) hid.value=f;
 }
-async function procesarCobrarSel(cId){
-  if(!cId){toast("Error: cliente no identificado",CR);return;}
-  var checks=[...document.querySelectorAll("#cb6_facturas [data-sel='1']")];
-  if(!checks.length){toast("Seleccioná al menos una factura",CA);return;}
-  var totalCobrado=0;
-  var updates=checks.map(c=>({id:c.dataset.id,saldo:parseFloat(c.dataset.saldo||0)}));
-  updates.forEach(u=>totalCobrado+=u.saldo);
-  try{
-    for(var u of updates){
-      var p=ST.pedidos.find(x=>x.id===u.id);
-      await db.collection("pedidos").doc(u.id).update({
-        saldoPendiente:0,estadoCobro:"cobrado",fechaCobro:fmtF(),
-        montoCobrado:(p?.montoCobrado||0)+u.saldo,
-        ts:firebase.firestore.FieldValue.serverTimestamp()
-      });
-      var idx=ST.pedidos.findIndex(x=>x.id===u.id);
-      if(idx>=0){ST.pedidos[idx].saldoPendiente=0;ST.pedidos[idx].estadoCobro="cobrado";
-        ST.pedidos[idx].montoCobrado=(ST.pedidos[idx].montoCobrado||0)+u.saldo;}
-    }
-    var cIdx=ST.clientes.findIndex(x=>x.id===cId);
-    if(cIdx>=0){
-      var nPend=Math.max(0,(ST.clientes[cIdx].pendiente||0)-totalCobrado);
-      await db.collection("clientes").doc(cId).update({pendiente:nPend});
-      ST.clientes[cIdx].pendiente=nPend;
-      if(ST.clienteActivo?.id===cId) ST.clienteActivo.pendiente=nPend;
-    }
-    toast("✓ "+updates.length+" factura"+(updates.length!==1?"s":"")+" cobrada"+(updates.length!==1?"s":"")+": "+fmtM(totalCobrado),CG);
-    setState({modal:null});
-  }catch(e){toast("Error: "+e.message,CR);}
-}
-async function procesarAbonar6(cId){
-  var monto=parseFloat(val("cb6_monto")||0);
+
+async function procesarCobro(id){
+  var monto=parseFloat(val("cb_m")||0);
+  var forma=val("cb_forma")||"Efectivo";
+  var ref=val("cb_ref")||"";
   if(!monto||monto<=0){toast("Ingresá un monto válido",CR);return;}
-  var pedsPend=ST.pedidos.filter(p=>p.clienteId===cId&&(p.saldoPendiente||0)>0.01)
-    .sort((a,b)=>(a.fecha||"").localeCompare(b.fecha||""));
-  var totalPend=pedsPend.reduce((s,p)=>s+(p.saldoPendiente||0),0);
-  if(monto>totalPend+0.01){toast("El monto supera la deuda total ("+fmtM(totalPend)+")",CR);return;}
-  var restante=monto;
+  var p=ST.pedidos.find(x=>x.id===id);
+  if(!p) return;
+  var fotoFile=$("cb_foto")?.files?.[0];
+  var fotoB64=null;
+  if(fotoFile){try{fotoB64=await comprimirFoto(fotoFile);}catch(e){}}
+  var nuevo=Math.max(0,(p.saldoPendiente||0)-monto);
+  var estadoCobro=nuevo<0.01?"cobrado":"parcial";
+  var upd={saldoPendiente:nuevo,estadoCobro,formaCobro:forma,refCobro:ref,
+    fechaCobro:fmtF(),montoCobrado:(p.montoCobrado||0)+monto,
+    ts:firebase.firestore.FieldValue.serverTimestamp()};
+  if(fotoB64) upd.fotoCobro=fotoB64;
   try{
-    for(var p of pedsPend){
-      if(restante<=0.01) break;
-      var pago=Math.min(restante,p.saldoPendiente||0);
-      var nuevoSaldo=Math.max(0,(p.saldoPendiente||0)-pago);
-      var eC=nuevoSaldo<0.01?"cobrado":"parcial";
-      await db.collection("pedidos").doc(p.id).update({
-        saldoPendiente:nuevoSaldo,estadoCobro:eC,fechaCobro:fmtF(),
-        montoCobrado:(p.montoCobrado||0)+pago,
-        ts:firebase.firestore.FieldValue.serverTimestamp()
-      });
-      var idx=ST.pedidos.findIndex(x=>x.id===p.id);
-      if(idx>=0){ST.pedidos[idx].saldoPendiente=nuevoSaldo;ST.pedidos[idx].estadoCobro=eC;ST.pedidos[idx].montoCobrado=(ST.pedidos[idx].montoCobrado||0)+pago;}
-      restante-=pago;
+    await db.collection("pedidos").doc(id).update(upd);
+    var idx=ST.pedidos.findIndex(x=>x.id===id);
+    if(idx>=0){ST.pedidos[idx].saldoPendiente=nuevo;ST.pedidos[idx].estadoCobro=estadoCobro;}
+    var cId=p.clienteId;
+    if(cId){
+      var cIdx=ST.clientes.findIndex(c=>c.id===cId);
+      if(cIdx>=0){
+        var cNuevo=Math.max(0,(parseFloat(ST.clientes[cIdx].pendiente)||0)-monto);
+        try{
+          await db.collection("clientes").doc(cId).update({pendiente:cNuevo});
+          ST.clientes[cIdx].pendiente=cNuevo;
+          if(ST.clienteActivo?.id===cId) ST.clienteActivo.pendiente=cNuevo;
+        }catch(e){}
+      }
     }
-    var cIdx=ST.clientes.findIndex(x=>x.id===cId);
-    if(cIdx>=0){
-      var nPend=ST.pedidos.filter(p=>p.clienteId===cId&&(p.saldoPendiente||0)>0.01).reduce((s,p)=>s+(p.saldoPendiente||0),0);
-      await db.collection("clientes").doc(cId).update({pendiente:nPend});
-      ST.clientes[cIdx].pendiente=nPend;
-      if(ST.clienteActivo?.id===cId) ST.clienteActivo.pendiente=nPend;
+    if(estadoCobro==="cobrado"&&p.clienteId){
+      var pends=ST.pendientes.filter(x=>!x.completado&&x.tipo==="acuerdo"&&x.clienteId===p.clienteId);
+      for(var pnd of pends){
+        try{await db.collection("pendientes").doc(pnd.id).update({completado:true,ts:firebase.firestore.FieldValue.serverTimestamp()});
+          var pi2=ST.pendientes.findIndex(x=>x.id===pnd.id);
+          if(pi2>=0) ST.pendientes[pi2].completado=true;
+        }catch(e){}
+      }
     }
-    toast("✓ Abono de "+fmtM(monto)+" registrado. Saldo restante: "+fmtM(Math.max(0,(ST.clientes.find(x=>x.id===cId)?.pendiente||0))),CG);
-    setState({modal:null});
-  }catch(e){toast("Error: "+e.message,CR);}
-}
-async function procesarAcuerdo6(cId){
-  var fechaRaw=$("cb6_fecha")?.value;
-  if(!fechaRaw){toast("Seleccioná una fecha",CR);return;}
-  var nota=val("cb6_nota")||"";
-  var pts=fechaRaw.split("-");
-  var fechaFmt=pts[2]+"/"+pts[1]+"/"+pts[0];
-  var cli=ST.clientes.find(x=>x.id===cId)||{};
-  var pedsPend=ST.pedidos.filter(p=>p.clienteId===cId&&(p.saldoPendiente||0)>0.01);
-  var totalPend=pedsPend.reduce((s,p)=>s+(p.saldoPendiente||0),0);
-  var acuerdo={fecha:fechaFmt,nota};
-  var pData={tipo:"cobro",descripcion:"Acuerdo de pago — "+cli.nombre,
-    clienteId:cId,fecha:fechaFmt,nota,completado:false,montoPendiente:totalPend,
-    vendedor:ST.perfil?.nombre||"",ts:firebase.firestore.FieldValue.serverTimestamp()};
-  try{
-    var ref=await db.collection("pendientes").add(pData);
-    var {ts:_tsA,...pDataLocal}=pData;
-    ST.pendientes.unshift({id:ref.id,...pDataLocal});
-    if(pedsPend.length>0){
-      var batch=db.batch();
-      pedsPend.forEach(ped=>{
-        batch.update(db.collection("pedidos").doc(ped.id),{acuerdoPago:acuerdo,ts:firebase.firestore.FieldValue.serverTimestamp()});
-      });
-      await batch.commit();
-      pedsPend.forEach(ped=>{
-        var idx=ST.pedidos.findIndex(x=>x.id===ped.id);
-        if(idx>=0) ST.pedidos[idx].acuerdoPago=acuerdo;
-      });
-    }
-    toast("✓ Acuerdo agendado para "+fechaFmt,CG);
+    toast(estadoCobro==="cobrado"?"✓ Cobro completo":"✓ Abono. Saldo: "+fmtM(nuevo),CG);
     setState({modal:null});
   }catch(e){toast("Error: "+e.message,CR);}
 }
 
 // modal: guardar pedido ───────────────────────────────────────────
-function setTipoFac(tipo){
-  var hid=$("gp_tipo_fac");if(hid)hid.value=tipo;
-  var campos=$("gp_fac_campos");
-  var btnCF=$("tf_cf"),btnFA=$("tf_fa");
-  if(campos) campos.style.display=tipo==="conFactura"?"block":"none";
-  if(btnCF&&btnFA){
-    if(tipo==="conFactura"){
-      btnFA.style.cssText="flex:1;padding:11px;border-radius:10px;border:2px solid "+CN+";background:"+CN+";color:"+CW+";font-weight:700;font-size:13px;cursor:pointer;";
-      btnCF.style.cssText="flex:1;padding:11px;border-radius:10px;border:2px solid #E2E8F0;background:"+CW+";color:#64748B;font-weight:700;font-size:13px;cursor:pointer;";
-    } else {
-      btnCF.style.cssText="flex:1;padding:11px;border-radius:10px;border:2px solid "+CN+";background:"+CN+";color:"+CW+";font-weight:700;font-size:13px;cursor:pointer;";
-      btnFA.style.cssText="flex:1;padding:11px;border-radius:10px;border:2px solid #E2E8F0;background:"+CW+";color:#64748B;font-weight:700;font-size:13px;cursor:pointer;";
-    }
-  }
-}
 function setYaPago(v){
   var hid=$("gp_ya_pago");if(hid)hid.value=v;
   var si=$("gp_yp_si"),no=$("gp_yp_no");
@@ -2679,36 +2277,22 @@ function setYaPago(v){
 }
 function mGuardarPedido(){
   var total=ST.carrito.reduce((s,i)=>s+i.subtotal,0);
-  var cli=ST.clienteActivo||{};
   return`${mHeader("Confirmar Pedido")}
   <div style="background:#F8FAFC;border-radius:11px;padding:12px;margin-bottom:14px;">
     <div style="font-size:12px;color:#64748B;">Cliente</div>
-    <div style="font-size:15px;font-weight:700;color:${CN};">${h(cli.nombre||"")}</div>
+    <div style="font-size:15px;font-weight:700;color:${CN};">${h(ST.clienteActivo?.nombre||"")}</div>
     <div style="font-size:12px;color:#64748B;margin-top:6px;">${ST.carrito.length} producto${ST.carrito.length!==1?"s":""} · ${h(ST.sistemaCarrito)}</div>
     <div style="font-size:20px;font-weight:800;color:${CN};margin-top:4px;">Total: ${fmtM(total)}</div>
   </div>
-  <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:7px;">Tipo de facturación *</label>
-  <div style="display:flex;gap:8px;margin-bottom:4px;">
-    <button id="tf_cf" onclick="setTipoFac('consumidorFinal')"
-      style="flex:1;padding:11px;border-radius:10px;border:2px solid ${CN};background:${CN};color:${CW};font-weight:700;font-size:13px;cursor:pointer;">
-      👤 Consumidor Final</button>
-    <button id="tf_fa" onclick="setTipoFac('conFactura')"
-      style="flex:1;padding:11px;border-radius:10px;border:2px solid #E2E8F0;background:${CW};color:#64748B;font-weight:700;font-size:13px;cursor:pointer;">
-      🧾 Con Factura</button>
-  </div>
-  <input type="hidden" id="gp_tipo_fac" value="consumidorFinal"/>
-  <div id="gp_fac_campos" style="display:none;background:#F8FAFC;border-radius:11px;padding:12px;margin-top:8px;margin-bottom:4px;">
-    <label style="font-size:12px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Nombre / Razón Social</label>
-    <input id="gp_nombre_fac" type="text" value="${h(cli.nombre||"")}"
-      style="width:100%;border:2px solid #E2E8F0;border-radius:9px;padding:10px;font-size:13px;outline:none;margin-bottom:8px;"/>
-    <label style="font-size:12px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Cédula</label>
-    <input id="gp_cedula_fac" type="text" placeholder="Cédula" value="${h(cli.cedula||"")}"
-      style="width:100%;border:2px solid #E2E8F0;border-radius:9px;padding:10px;font-size:13px;outline:none;margin-bottom:8px;"/>
-    <label style="font-size:12px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">RUC (opcional)</label>
-    <input id="gp_ruc_fac" type="text" placeholder="RUC" value="${h(cli.ruc||"")}"
-      style="width:100%;border:2px solid #E2E8F0;border-radius:9px;padding:10px;font-size:13px;outline:none;"/>
-  </div>
-  <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:7px;margin-top:14px;">¿El cliente ya pagó?</label>
+  <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:6px;">Forma de pago</label>
+  <select id="gp_forma" style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:14px;outline:none;background:${CW};margin-bottom:12px;">
+    <option value="Contado">Contado</option>
+    <option value="Credito">Crédito</option>
+  </select>
+  <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:6px;">Persona de contacto para facturación (opcional)</label>
+  <input id="gp_contacto" type="text" placeholder="Nombre del encargado de facturación"
+    style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:14px;outline:none;margin-bottom:12px;"/>
+  <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:7px;">¿El cliente ya pagó?</label>
   <div style="display:flex;gap:8px;margin-bottom:16px;">
     <button id="gp_yp_si" onclick="setYaPago('si')"
       style="flex:1;padding:11px;border-radius:10px;border:2px solid #E2E8F0;background:${CW};color:#64748B;font-weight:700;font-size:13px;cursor:pointer;">
@@ -2913,26 +2497,6 @@ function camposCl(pre){
       <option value="">Ninguno</option>
       ${["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"].map(d=>`<option${(pre?.diaCobro||"")=== d?" selected":""}>${d}</option>`).join("")}
     </select>
-  </div>
-  <div style="margin-bottom:12px;">
-    <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Notas internas</label>
-    <textarea id="cl_notas" placeholder="Observaciones, instrucciones especiales, horarios..."
-      style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:13px;outline:none;resize:vertical;min-height:68px;font-family:inherit;"
-    >${h(pre?.notasInternas||"")}</textarea>
-  </div>
-  <div style="margin-bottom:16px;">
-    <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Foto del local</label>
-    ${pre?.fotoLocal?`<div style="margin-bottom:8px;">
-      <img src="${h(pre.fotoLocal)}" style="width:100%;max-height:160px;object-fit:cover;border-radius:11px;"/>
-      <div style="font-size:11px;color:#64748B;margin-top:4px;">Foto actual — sube una nueva para reemplazar</div>
-    </div>`:""}
-    <label style="display:flex;align-items:center;gap:10px;background:#F8FAFC;border:2px dashed #CBD5E1;border-radius:11px;padding:12px;cursor:pointer;">
-      <span style="font-size:20px;">📷</span>
-      <span id="cl_foto_label" style="font-size:13px;color:#64748B;">${pre?.fotoLocal?"Cambiar foto":"Tomar foto o subir imagen"}</span>
-      <input id="cl_foto" type="file" accept="image/*" style="display:none;"
-        onchange="var r=new FileReader();r.onload=e=>{var lbl=$('cl_foto_label');if(lbl)lbl.textContent='✓ Foto lista';var prev=$('cl_foto_prev');if(prev){prev.src=e.target.result;prev.style.display='block';}};r.readAsDataURL(this.files[0]);"/>
-    </label>
-    <img id="cl_foto_prev" src="" style="display:none;width:100%;max-height:120px;object-fit:cover;border-radius:11px;margin-top:8px;"/>
   </div>`;
 }
 
@@ -2947,21 +2511,16 @@ function mNuevoCliente(){
 async function guardarNuevoCliente(){
   var nombre=val("cl_nom");
   if(!nombre){toast("El nombre es obligatorio",CR);return;}
-  var notasInternas=val("cl_notas")||"";
-  var fotoLocal="";
-  var fotoInput=$("cl_foto");
-  if(fotoInput&&fotoInput.files&&fotoInput.files[0]){try{fotoLocal=await comprimirFoto(fotoInput.files[0]);}catch(e){}}
   var data={nombre,encargado:val("cl_enc"),tel:val("cl_tel"),tel2:val("cl_tel2")||"",
     cedula:val("cl_cedula")||"",ruc:val("cl_ruc"),sistema:val("cl_sistema")||"",
     dir:val("cl_dir"),zona:val("cl_zona")||"Centro",precio:val("cl_precio")||"C",
     ordenRuta:parseInt(val("cl_orden")||999),limiteCred:parseFloat(val("cl_lim")||0),
     condicionesPago:val("cl_cond"),diasVisita:JSON.parse(val("cl_dias")||"[]"),
-    diaCobro:val("cl_diaCobro")||"",notasInternas,fotoLocal,
+    diaCobro:val("cl_diaCobro")||"",
     estado:"activo",pendiente:0,monto:0,ts:firebase.firestore.FieldValue.serverTimestamp()};
   try{
     var ref=await db.collection("clientes").add(data);
-    var {ts:_tsC,...dataLocalC}=data;
-    ST.clientes.push({id:ref.id,...dataLocalC});
+    ST.clientes.push({id:ref.id,...data});
     toast("✓ Cliente guardado",CG);setState({modal:null});
   }catch(e){toast("Error: "+e.message,CR);}
 }
@@ -2980,31 +2539,24 @@ function mEditarCliente(c){
 async function actualizarCliente(id){
   var nombre=val("cl_nom");
   if(!nombre){toast("El nombre es obligatorio",CR);return;}
-  var notasInternas=val("cl_notas")||"";
-  var fotoLocal="";
-  var fotoInput=$("cl_foto");
-  if(fotoInput&&fotoInput.files&&fotoInput.files[0]){try{fotoLocal=await comprimirFoto(fotoInput.files[0]);}catch(e){}}
-  if(!fotoLocal){var cEx=ST.clientes.find(x=>x.id===id);fotoLocal=cEx?.fotoLocal||"";}
   var data={nombre,encargado:val("cl_enc"),tel:val("cl_tel"),tel2:val("cl_tel2")||"",
     cedula:val("cl_cedula")||"",ruc:val("cl_ruc"),sistema:val("cl_sistema")||"",
     dir:val("cl_dir"),zona:val("cl_zona"),precio:val("cl_precio"),
     ordenRuta:parseInt(val("cl_orden")||999),limiteCred:parseFloat(val("cl_lim")||0),
     condicionesPago:val("cl_cond"),diasVisita:JSON.parse(val("cl_dias")||"[]"),
-    diaCobro:val("cl_diaCobro")||"",notasInternas,fotoLocal,
+    diaCobro:val("cl_diaCobro")||"",
     ts:firebase.firestore.FieldValue.serverTimestamp()};
   try{
     await db.collection("clientes").doc(id).update(data);
-    var {ts:_tsU,...dataLocalU}=data;
     var idx=ST.clientes.findIndex(c=>c.id===id);
-    if(idx>=0) Object.assign(ST.clientes[idx],dataLocalU);
-    if(ST.clienteActivo?.id===id) Object.assign(ST.clienteActivo,dataLocalU);
+    if(idx>=0) Object.assign(ST.clientes[idx],data);
+    if(ST.clienteActivo?.id===id) Object.assign(ST.clienteActivo,data);
     toast("✓ Actualizado",CG);setState({modal:null});
   }catch(e){toast("Error: "+e.message,CR);}
 }
 
 // modal: producto ─────────────────────────────────────────────────
 var CATS=["Licores","Bebidas","Cerveza","Confitería","Snack","Helados","Coctelería","General","Otro"];
-var CATS_GASTOS=["Combustible","Alimentación","Peaje","Estacionamiento","Comunicación","Mantenimiento","Otro"];
 
 function camposProd(pre){
   return`
@@ -3064,8 +2616,7 @@ function camposProd(pre){
     <div style="flex:1;">
       <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Sistema</label>
       <select id="pd_sis" style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:14px;outline:none;background:${CW};">
-        ${!pre?`<option value="">— Seleccionar *</option>`:""}
-        <option${pre?.sistema==="Perseo"?" selected":""}>Perseo</option>
+        <option${(pre?.sistema||"Perseo")==="Perseo"?" selected":""}>Perseo</option>
         <option${pre?.sistema==="Importados"?" selected":""}>Importados</option>
       </select>
     </div>
@@ -3123,22 +2674,19 @@ function mNuevoProducto(){
 async function guardarNuevoProducto(){
   var nombre=val("pd_nom");
   if(!nombre){toast("El nombre es obligatorio",CR);return;}
-  var sistema=val("pd_sis");
-  if(!sistema){toast("El sistema (Perseo/Importados) es obligatorio",CR);return;}
   var stkRaw=val("pd_stock"),sminRaw=val("pd_smin");
   var data={codigo:val("pd_cod"),nombre,categoria:val("pd_cat")||"General",
     costo:parseFloat(val("pd_costo")||0),
     precioA:parseFloat(val("pd_pA")||0),precioB:parseFloat(val("pd_pB")||0),
     precioC:parseFloat(val("pd_pC")||0),precioD:parseFloat(val("pd_pD")||0),
-    sistema,disponible:"Disponible",
+    sistema:val("pd_sis")||"Perseo",disponible:"Disponible",
     stockActual:stkRaw!==""?parseInt(stkRaw):null,
     stockMinimo:sminRaw!==""?parseInt(sminRaw):null,
     ultimaActualizacion:fmtF(),
     ts:firebase.firestore.FieldValue.serverTimestamp()};
   try{
     var ref=await db.collection("catalogo").add(data);
-    var {ts:_tsP,...dataLocalP}=data;
-    ST.catalogo.push({id:ref.id,...dataLocalP});
+    ST.catalogo.push({id:ref.id,...data});
     toast("✓ Producto guardado",CG);setState({modal:null});
   }catch(e){toast("Error: "+e.message,CR);}
 }
@@ -3169,9 +2717,8 @@ async function actualizarProducto(id){
     ts:firebase.firestore.FieldValue.serverTimestamp()};
   try{
     await db.collection("catalogo").doc(id).update(data);
-    var {ts:_tsPU,...dataLocalPU}=data;
     var idx=ST.catalogo.findIndex(p=>p.id===id);
-    if(idx>=0) Object.assign(ST.catalogo[idx],dataLocalPU);
+    if(idx>=0) Object.assign(ST.catalogo[idx],data);
     toast("✓ Actualizado",CG);setState({modal:null});
   }catch(e){toast("Error: "+e.message,CR);}
 }
@@ -3251,16 +2798,15 @@ async function guardarProspecto(){
     primerContacto:fmtF(),ts:firebase.firestore.FieldValue.serverTimestamp()};
   try{
     var ref=await db.collection("prospectos").add(data);
-    var {ts:_tsPr,...dataLocalPr}=data;
-    ST.prospectos.push({id:ref.id,...dataLocalPr});
+    var pros={id:ref.id,...data};
+    ST.prospectos.push(pros);
     // Auto-crear pendiente si se definió fecha de visita
     if(fechaVisita){
       var pData={tipo:"visita",descripcion:"Visita a prospecto: "+nombre,
         fecha:fechaVisita,prospectoId:ref.id,completado:false,
         creadoEn:fmtF(),ts:firebase.firestore.FieldValue.serverTimestamp()};
       var pRef=await db.collection("pendientes").add(pData);
-      var {ts:_tsPd,...pDataLocal}=pData;
-      ST.pendientes.unshift({id:pRef.id,...pDataLocal});
+      ST.pendientes.unshift({id:pRef.id,...pData});
       toast("✓ Prospecto guardado — pendiente de visita creado",CG);
     } else {
       toast("✓ Prospecto guardado",CG);
@@ -3288,7 +2834,7 @@ function mNuevoGasto(){
   <div style="margin-bottom:12px;">
     <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Tipo</label>
     <select id="ga_tipo" style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:14px;outline:none;background:${CW};">
-      ${CATS_GASTOS.map(t=>`<option>${t}</option>`).join("")}
+      ${["Combustible","Alimentación","Peaje","Estacionamiento","Comunicación","Otro"].map(t=>`<option>${t}</option>`).join("")}
     </select>
   </div>
   <div style="margin-bottom:12px;">
@@ -3315,11 +2861,6 @@ function mNuevoGasto(){
         🏢 Empresa</button>
     </div>
   </div>
-  <div style="margin-bottom:12px;">
-    <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">📷 Foto del recibo (opcional)</label>
-    <input id="ga_foto" type="file" accept="image/*" capture="environment"
-      style="width:100%;border:2px dashed #E2E8F0;border-radius:11px;padding:10px;font-size:13px;"/>
-  </div>
   <div id="ga_reembolso_w" style="margin-bottom:16px;">
     <label style="display:flex;align-items:center;gap:10px;font-size:13px;font-weight:600;color:${CN};cursor:pointer;">
       <input type="checkbox" id="ga_reembolso" style="width:18px;height:18px;cursor:pointer;"/>
@@ -3336,45 +2877,63 @@ async function guardarGasto(){
   if(!monto||monto<=0){toast("Ingresá un monto",CR);return;}
   var asume=$("ga_asume")?$("ga_asume").value:"vendedor";
   var reembolso=$("ga_reembolso")?$("ga_reembolso").checked:false;
-  var fotoInput=$("ga_foto");
-  var foto="";
-  if(fotoInput&&fotoInput.files&&fotoInput.files[0]){
-    try{foto=await comprimirFoto(fotoInput.files[0]);}catch(e){}
-  }
   var data={tipo:val("ga_tipo")||"Otro",descripcion:val("ga_desc"),monto,
     asume,reembolso:reembolso&&asume==="vendedor",
     reembolsoEstado:reembolso&&asume==="vendedor"?"pendiente":null,
-    foto,vendedor:ST.perfil?.nombre||"",fecha:fmtF(),ts:firebase.firestore.FieldValue.serverTimestamp()};
+    vendedor:ST.perfil?.nombre||"",fecha:fmtF(),ts:firebase.firestore.FieldValue.serverTimestamp()};
   try{
     var ref=await db.collection("gastos").add(data);
-    var {ts:_tsG,...dataLocal}=data;
-    ST.gastos.unshift({id:ref.id,...dataLocal});
+    ST.gastos.unshift({id:ref.id,...data});
     toast("✓ Gasto registrado",CG);setState({modal:null});
   }catch(e){toast("Error: "+e.message,CR);}
 }
 
+function filtrarCliDev(v){
+  var q=(v||"").toLowerCase();
+  var list=$("dv_cli_list");
+  if(!list) return;
+  if(!q){list.style.display="none";$("dv_cli_id").value="";return;}
+  var res=ST.clientes.filter(c=>(c.nombre||"").toLowerCase().includes(q)).slice(0,8);
+  if(!res.length){list.style.display="none";return;}
+  list.innerHTML=res.map(c=>`<div onclick="selCliDev('${c.id}','${h(c.nombre).replace(/'/g,"&#39;")}')"
+    data-id="${c.id}"
+    style="padding:10px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid #F1F5F9;"
+    onmouseover="this.style.background='#F8FAFC'" onmouseout="this.style.background=''">${h(c.nombre)}</div>`).join("");
+  list.style.display="block";
+}
+function selCliDev(id,nombre){
+  var inp=$("dv_cli"),hid=$("dv_cli_id"),list=$("dv_cli_list");
+  if(inp) inp.value=nombre; if(hid) hid.value=id; if(list) list.style.display="none";
+  var w=$("dv_pedido_w"),sel=$("dv_pedido_id");
+  if(w&&sel&&id){
+    var peds=ST.pedidos.filter(p=>p.clienteId===id&&p.estado!=="cancelado").slice(0,20);
+    sel.innerHTML=`<option value="">— Sin vincular —</option>`+peds.map(p=>
+      `<option value="${p.id}">${fmtNota(p.numeroNota)} · ${h(p.fecha||"")} · ${fmtM(p.montoConIVA||p.monto)}</option>`
+    ).join("");
+    w.style.display="block";
+  }
+}
+
 // modal: devolución ───────────────────────────────────────────────
 function mNuevaDev(){
-  var nombresClientes=ST.clientes.map(c=>c.nombre).sort();
   return`${mHeader("Nueva Devolución")}
-  <div style="background:#FEF3C7;border:1px solid #FCD34D;border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:12px;font-weight:700;color:#92400E;">
-    ⚠️ No se devuelve dinero. Solo cambio por producto de igual o mayor valor.
-  </div>
-  <div style="margin-bottom:12px;">
+  <div style="margin-bottom:12px;position:relative;">
     <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Cliente *</label>
-    <div style="position:relative;">
-      <input id="dv_cli" type="text" placeholder="Buscar cliente..." autocomplete="off"
-        oninput="filtrarCliDev(this.value)"
-        onblur="setTimeout(()=>{var l=$('dv_cli_list');if(l)l.style.display='none';},150)"
-        style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:14px;outline:none;"/>
-      <div id="dv_cli_list" style="display:none;position:absolute;top:100%;left:0;right:0;
-        background:${CW};border:2px solid #E2E8F0;border-top:none;
-        border-radius:0 0 11px 11px;z-index:200;max-height:180px;overflow-y:auto;
-        box-shadow:0 4px 12px rgba(0,0,0,0.12);"></div>
-    </div>
+    <input id="dv_cli" type="text" placeholder="Nombre del negocio"
+      oninput="filtrarCliDev(this.value)"
+      style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:14px;outline:none;"/>
+    <input type="hidden" id="dv_cli_id" value=""/>
+    <div id="dv_cli_list" style="display:none;position:absolute;top:100%;left:0;right:0;
+      background:${CW};border:1px solid #E2E8F0;border-radius:9px;box-shadow:0 4px 12px rgba(0,0,0,0.1);z-index:200;max-height:180px;overflow-y:auto;"></div>
+  </div>
+  <div id="dv_pedido_w" style="display:none;margin-bottom:12px;">
+    <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Pedido vinculado</label>
+    <select id="dv_pedido_id" style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:13px;outline:none;background:${CW};">
+      <option value="">— Sin vincular —</option>
+    </select>
   </div>
   <div style="margin-bottom:12px;">
-    <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Producto devuelto *</label>
+    <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Producto *</label>
     <input id="dv_prod" type="text" placeholder="Nombre del producto"
       style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:14px;outline:none;"/>
   </div>
@@ -3385,23 +2944,10 @@ function mNuevaDev(){
         style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:14px;outline:none;"/>
     </div>
     <div style="flex:1;">
-      <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Valor devuelto $</label>
+      <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Monto $</label>
       <input id="dv_monto" type="number" step="0.01" placeholder="0.00"
         style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:14px;outline:none;"/>
     </div>
-  </div>
-  <div style="margin-bottom:12px;">
-    <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">📷 Foto del producto devuelto</label>
-    <input id="dv_foto" type="file" accept="image/*" capture="environment"
-      style="width:100%;border:2px dashed #E2E8F0;border-radius:11px;padding:10px;font-size:13px;"/>
-  </div>
-  <div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:11px;padding:12px;margin-bottom:12px;">
-    <div style="font-size:12px;font-weight:800;color:${CG};margin-bottom:8px;">📦 Producto de reemplazo</div>
-    <input id="dv_rep_prod" type="text" placeholder="Nombre del producto de reemplazo"
-      style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:11px;font-size:14px;outline:none;margin-bottom:8px;"/>
-    <input id="dv_rep_val" type="number" step="0.01" placeholder="Valor del reemplazo $"
-      style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:11px;font-size:14px;outline:none;"/>
-    <div style="font-size:11px;color:#64748B;margin-top:6px;">Si el reemplazo vale más, la diferencia se suma a la cuenta del cliente.</div>
   </div>
   <div style="margin-bottom:12px;">
     <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Motivo</label>
@@ -3412,8 +2958,18 @@ function mNuevaDev(){
   <div style="margin-bottom:12px;">
     <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Estado</label>
     <select id="dv_estado" style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:14px;outline:none;background:${CW};">
-      ${["Pendiente","Cambiado","Rechazado"].map(e=>`<option>${e}</option>`).join("")}
+      ${["pendiente","proceso","resuelto","rechazado"].map(e=>`<option>${e}</option>`).join("")}
     </select>
+  </div>
+  <div style="margin-bottom:12px;">
+    <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Producto de reemplazo (si aplica)</label>
+    <input id="dv_rep_nombre" type="text" placeholder="Nombre del reemplazo"
+      style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:14px;outline:none;"/>
+  </div>
+  <div style="margin-bottom:12px;">
+    <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Valor del reemplazo $</label>
+    <input id="dv_rep_val" type="number" step="0.01" placeholder="0.00"
+      style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:14px;outline:none;"/>
   </div>
   <div style="margin-bottom:16px;">
     <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Notas</label>
@@ -3422,52 +2978,41 @@ function mNuevaDev(){
   </div>
   <button onclick="guardarDev()"
     style="width:100%;background:${CG};border:none;border-radius:13px;padding:14px;
-    color:${CW};font-size:16px;font-weight:700;cursor:pointer;margin-bottom:8px;">✓ Guardar</button>
-  <button onclick="setState({modal:null})"
-    style="width:100%;background:none;border:2px solid #E2E8F0;border-radius:13px;padding:12px;
-    color:#64748B;font-size:14px;font-weight:600;cursor:pointer;">Cancelar</button>`;
+    color:${CW};font-size:16px;font-weight:700;cursor:pointer;">✓ Guardar</button>`;
 }
 
 async function guardarDev(){
   var cliente=val("dv_cli"),producto=val("dv_prod");
   if(!cliente||!producto){toast("Cliente y producto son obligatorios",CR);return;}
-  var estado=val("dv_estado")||"Pendiente";
-  var montoDevuelto=parseFloat(val("dv_monto")||0);
-  var repProd=val("dv_rep_prod")||"";
-  var repVal=parseFloat(val("dv_rep_val")||0);
-  var fotoInput=$("dv_foto");
-  var foto="";
-  if(fotoInput&&fotoInput.files&&fotoInput.files[0]){
-    try{foto=await comprimirFoto(fotoInput.files[0]);}catch(e){}
+  var clienteId=val("dv_cli_id")||"";
+  var pedidoId=val("dv_pedido_id")||"";
+  if(!clienteId){
+    var cDev=ST.clientes.find(x=>x.nombre===cliente);
+    if(cDev) clienteId=cDev.id;
   }
-  var data={cliente,producto,cantidad:parseInt(val("dv_cant")||1),
-    monto:montoDevuelto,motivo:val("dv_mot"),
-    estado,notas:val("dv_notas")||"",
-    productoReemplazo:repProd,valorReemplazo:repVal,
-    foto,fecha:fmtF(),ts:firebase.firestore.FieldValue.serverTimestamp()};
+  var estado=val("dv_estado")||"pendiente";
+  var montoDevuelto=parseFloat(val("dv_monto")||0);
+  var repNombre=val("dv_rep_nombre")||"";
+  var repVal=parseFloat(val("dv_rep_val")||0);
+  var data={cliente,clienteId,pedidoId,producto,cantidad:parseInt(val("dv_cant")||1),
+    monto:montoDevuelto,motivo:val("dv_mot"),estado,notas:val("dv_notas")||"",
+    reemplazoNombre:repNombre,reemplazoValor:repVal,
+    fecha:fmtF(),ts:firebase.firestore.FieldValue.serverTimestamp()};
+  if(clienteId&&repNombre&&repVal>0&&Math.abs(repVal-montoDevuelto)>0.01){
+    var delta=Math.max(0,repVal-montoDevuelto);
+    if(delta>0){
+      var cIdx=ST.clientes.findIndex(x=>x.id===clienteId);
+      if(cIdx>=0){
+        var nSaldo=(ST.clientes[cIdx].pendiente||0)+delta;
+        try{await db.collection("clientes").doc(clienteId).update({pendiente:nSaldo});
+          ST.clientes[cIdx].pendiente=nSaldo;}catch(e){}
+      }
+    }
+  }
   try{
     var ref=await db.collection("devoluciones").add(data);
-    var {ts:_tsD,...dataLocal}=data;
-    ST.devoluciones.unshift({id:ref.id,...dataLocal});
-    var cDev=ST.clientes.find(x=>x.nombre===cliente);
-    if(cDev&&(estado==="Devuelto"||(estado==="Cambiado"&&Math.abs(repVal-montoDevuelto)>0.01))){
-      var nPend=parseFloat(cDev.pendiente)||0;
-      var delta=0;
-      if(estado==="Devuelto"){
-        delta=-montoDevuelto; // producto devuelto sin reemplazo → reduce deuda
-      } else {
-        delta=repVal-montoDevuelto; // Cambiado: positivo suma, negativo resta
-      }
-      nPend=Math.max(0,nPend+delta);
-      await db.collection("clientes").doc(cDev.id).update({pendiente:nPend});
-      cDev.pendiente=nPend;
-      var msgDelta=delta>0?"Diferencia de "+fmtM(delta)+" sumada a cuenta":
-        delta<0?"Deuda reducida en "+fmtM(-delta):"";
-      toast("✓ Devolución registrada"+(msgDelta?". "+msgDelta:""),CG,5000);
-    } else {
-      toast("✓ Devolución registrada",CG);
-    }
-    setState({modal:null});
+    ST.devoluciones.unshift({id:ref.id,...data});
+    toast("✓ Devolución registrada",CG);setState({modal:null});
   }catch(e){toast("Error: "+e.message,CR);}
 }
 
@@ -3481,12 +3026,16 @@ function htmlCartera(){
 
   // Pedidos del mes
   var pedidosMes=ST.pedidos.filter(p=>{
-    if(p.estado==="cancelado")return false;
+    if(p.estado==="cancelado"||p.estado==="tomado")return false;
     var pts=(p.fecha||"").split("/");
     return pts.length===3&&parseInt(pts[1])===mesNow&&parseInt(pts[2])===anioNow;
   });
   var ventasMes=pedidosMes.reduce((s,p)=>s+(p.montoConIVA||p.monto||0),0);
-  var cobradoMes=pedidosMes.reduce((s,p)=>s+(p.montoCobrado||0),0);
+  var cobradoMes=ST.pedidos.filter(p=>{
+    if(!p.fechaCobro)return false;
+    var pts=(p.fechaCobro).split("/");
+    return pts.length===3&&parseInt(pts[1])===mesNow&&parseInt(pts[2])===anioNow;
+  }).reduce((s,p)=>s+(p.montoCobrado||0),0);
   var metaMes=parseFloat(cfg.metaMensual||0);
   var pctMeta=metaMes>0?Math.min(100,Math.round(ventasMes/metaMes*100)):null;
   var barColor=pctMeta!=null?(pctMeta>=100?"#4ADE80":pctMeta>=50?CA:CR):CG;
@@ -3526,36 +3075,10 @@ function htmlCartera(){
     .sort((a,b)=>b[1]-a[1]).slice(0,3)
     .map(([nombre,monto])=>({nombre,monto}));
 
-  // Desglose Perseo vs Importados
-  var ventasPerseo=pedidosMes.filter(p=>p.sistema!=="Importados").reduce((s,p)=>s+(p.montoConIVA||p.monto||0),0);
-  var ventasImport=pedidosMes.filter(p=>p.sistema==="Importados").reduce((s,p)=>s+(p.montoConIVA||p.monto||0),0);
-
-  // Gastos del mes
-  var gastosMes=ST.gastos.filter(g=>{
-    var pts=(g.fecha||"").split("/");
-    return pts.length===3&&parseInt(pts[1])===mesNow&&parseInt(pts[2])===anioNow;
-  }).reduce((s,g)=>s+(g.monto||0),0);
-  var utilidadMes=ventasMes-gastosMes;
-
-  // Proyección del mes
-  var diasDelMes=new Date(anioNow,mesNow,0).getDate();
-  var diaHoy=hoy.getDate();
-  var proyeccion=diaHoy>0?Math.round(ventasMes/diaHoy*diasDelMes):0;
-
-  // Comparativo mes anterior
-  var mesAnt=mesNow===1?12:mesNow-1;
-  var anioAnt=mesNow===1?anioNow-1:anioNow;
-  var ventasMesAnt=ST.pedidos.filter(p=>{
-    if(p.estado==="cancelado")return false;
-    var pts=(p.fecha||"").split("/");
-    return pts.length===3&&parseInt(pts[1])===mesAnt&&parseInt(pts[2])===anioAnt;
-  }).reduce((s,p)=>s+(p.montoConIVA||p.monto||0),0);
-  var difVsMesAnt=ventasMesAnt>0?Math.round((ventasMes-ventasMesAnt)/ventasMesAnt*100):null;
-
   // Sin comprar 21+ días
   var sinComprar21=ST.clientes.filter(c=>{
     if(c.estado==="inactivo")return false;
-    var peds=ST.pedidos.filter(p=>p.clienteId===c.id&&p.estado!=="cancelado").sort((a,b)=>skF(b.fecha).localeCompare(skF(a.fecha)));
+    var peds=ST.pedidos.filter(p=>p.clienteId===c.id&&p.estado!=="cancelado");
     if(!peds.length)return true;
     var d=diasDesde(peds[0].fecha);
     return d!==null&&d>=21;
@@ -3602,59 +3125,6 @@ function htmlCartera(){
       </div>`:""}
     </div>
 
-    <!-- Gastos y utilidad -->
-    <div style="background:${CW};border-radius:14px;padding:14px;margin-bottom:12px;box-shadow:0 1px 4px rgba(0,0,0,0.06);">
-      <div style="font-size:12px;font-weight:800;color:${CN};text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">
-        💸 Gastos y utilidad del mes</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-        <div style="background:#FEF2F2;border-radius:10px;padding:11px;">
-          <div style="font-size:17px;font-weight:800;color:${CR};">${fmtM(gastosMes)}</div>
-          <div style="font-size:10px;color:#94A3B8;margin-top:2px;">GASTOS MES</div>
-        </div>
-        <div style="background:${utilidadMes>=0?"#DCFCE7":"#FEF2F2"};border-radius:10px;padding:11px;">
-          <div style="font-size:17px;font-weight:800;color:${utilidadMes>=0?CG:CR};">${fmtM(utilidadMes)}</div>
-          <div style="font-size:10px;color:#94A3B8;margin-top:2px;">UTILIDAD ESTIMADA</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Perseo vs Importados -->
-    <div style="background:${CW};border-radius:14px;padding:14px;margin-bottom:12px;box-shadow:0 1px 4px rgba(0,0,0,0.06);">
-      <div style="font-size:12px;font-weight:800;color:${CN};text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">
-        📦 Ventas por sistema</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-        <div style="background:#EFF6FF;border-radius:10px;padding:11px;">
-          <div style="font-size:17px;font-weight:800;color:${CB};">${fmtM(ventasPerseo)}</div>
-          <div style="font-size:10px;color:#94A3B8;margin-top:2px;">🇪🇨 PERSEO</div>
-          ${ventasMes>0?`<div style="font-size:10px;color:${CB};margin-top:3px;font-weight:700;">${Math.round(ventasPerseo/ventasMes*100)}%</div>`:""}
-        </div>
-        <div style="background:#F5F3FF;border-radius:10px;padding:11px;">
-          <div style="font-size:17px;font-weight:800;color:${CP};">${fmtM(ventasImport)}</div>
-          <div style="font-size:10px;color:#94A3B8;margin-top:2px;">🌎 IMPORTADOS</div>
-          ${ventasMes>0?`<div style="font-size:10px;color:${CP};margin-top:3px;font-weight:700;">${Math.round(ventasImport/ventasMes*100)}%</div>`:""}
-        </div>
-      </div>
-    </div>
-
-    <!-- Proyección y comparativo -->
-    <div style="background:${CW};border-radius:14px;padding:14px;margin-bottom:12px;box-shadow:0 1px 4px rgba(0,0,0,0.06);">
-      <div style="font-size:12px;font-weight:800;color:${CN};text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">
-        📈 Proyección y tendencia</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-        <div style="background:#FFFBEB;border-radius:10px;padding:11px;">
-          <div style="font-size:17px;font-weight:800;color:${CA};">${fmtM(proyeccion)}</div>
-          <div style="font-size:10px;color:#94A3B8;margin-top:2px;">PROYECCIÓN MES</div>
-          <div style="font-size:10px;color:${CA};margin-top:3px;">Día ${diaHoy}/${diasDelMes}</div>
-        </div>
-        <div style="background:${difVsMesAnt!=null&&difVsMesAnt>=0?"#DCFCE7":"#FEF2F2"};border-radius:10px;padding:11px;">
-          <div style="font-size:17px;font-weight:800;color:${difVsMesAnt!=null?(difVsMesAnt>=0?CG:CR):"#94A3B8"};">
-            ${difVsMesAnt!=null?(difVsMesAnt>=0?"+":"")+difVsMesAnt+"%":"—"}</div>
-          <div style="font-size:10px;color:#94A3B8;margin-top:2px;">VS MES ANTERIOR</div>
-          <div style="font-size:10px;color:#94A3B8;margin-top:3px;">${fmtM(ventasMesAnt)}</div>
-        </div>
-      </div>
-    </div>
-
     <!-- Top 3 clientes -->
     ${top3Clientes.length?`<div style="background:${CW};border-radius:14px;padding:14px;margin-bottom:12px;box-shadow:0 1px 4px rgba(0,0,0,0.06);">
       <div style="font-size:12px;font-weight:800;color:${CN};text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">
@@ -3692,7 +3162,7 @@ function htmlCartera(){
       <div style="font-size:12px;font-weight:800;color:${CO};text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">
         ⏰ Sin comprar hace 21+ días (${sinComprar21.length})</div>
       ${sinComprar21.slice(0,5).map(c=>{
-        var peds=ST.pedidos.filter(p=>p.clienteId===c.id&&p.estado!=="cancelado").sort((a,b)=>skF(b.fecha).localeCompare(skF(a.fecha)));
+        var peds=ST.pedidos.filter(p=>p.clienteId===c.id&&p.estado!=="cancelado");
         var dias=peds.length?diasDesde(peds[0].fecha):null;
         return`<div style="display:flex;justify-content:space-between;align-items:center;
           padding:6px 0;border-bottom:1px solid #FED7AA;">
@@ -3756,8 +3226,9 @@ function htmlCartera(){
   </div></div>`;
 }
 function abrirCobroCliente(cId){
-  if(!cId){toast("Cliente no identificado",CR);return;}
-  setState({modal:{tipo:"cobrarCliente",clienteId:cId}});
+  var pedidos=ST.pedidos.filter(p=>p.clienteId===cId&&(p.saldoPendiente||0)>0.01);
+  if(!pedidos.length){toast("Sin pedidos pendientes",CA);return;}
+  abrirCobro(pedidos[0].id);
 }
 
 // ── NOTA DE VENTA ─────────────────────────────────────────────────
@@ -3781,7 +3252,7 @@ function mVerNota(p){
     </div>
     <div style="font-size:12px;color:#64748B;margin-bottom:2px;">Fecha: ${h(p.fecha||"")}</div>
     <div style="font-size:14px;font-weight:700;color:${CN};margin-bottom:2px;">Cliente: ${h(p.cliente||"")}</div>
-    ${p.formaPago||p.formaCobro?`<div style="font-size:11px;color:#64748B;margin-bottom:10px;">Forma de pago: ${h(p.formaPago||p.formaCobro)}</div>`:`<div style="margin-bottom:10px;"></div>`}
+    ${p.formaPago?`<div style="font-size:11px;color:#64748B;margin-bottom:10px;">Forma de pago: ${h(p.formaPago)}</div>`:`<div style="margin-bottom:10px;"></div>`}
     ${prods.length?prods.map(i=>`<div style="display:flex;justify-content:space-between;align-items:center;
       font-size:12px;margin-bottom:5px;padding-bottom:5px;border-bottom:1px solid #F1F5F9;">
       <span style="flex:1;padding-right:8px;">${i.cantidad}x ${h(i.nombre||"")}</span>
@@ -3864,7 +3335,7 @@ function imprimirNota(id){
   <h1>🥃 LA CLÍNICA</h1>
   <div class="sub">NOTA DE VENTA ${num}<br/>${h(p.fecha||"")} · ${h(p.sistema||"")}</div>
   <div style="margin-bottom:8px;"><b>Cliente:</b> ${h(p.cliente||"")}</div>
-  ${p.formaPago||p.formaCobro?`<div style="margin-bottom:8px;font-size:11px;color:#666;">Pago: ${h(p.formaPago||p.formaCobro)}</div>`:""}
+  ${p.formaPago?`<div style="margin-bottom:8px;font-size:11px;color:#666;">Pago: ${h(p.formaPago)}</div>`:""}
   <table>${rows}</table>
   <table style="margin-top:8px;">
     <tr><td style="color:#666;">Subtotal sin IVA</td><td style="text-align:right;">${fmtM(sinIVA)}</td></tr>
@@ -3887,26 +3358,21 @@ function debPend(v){
   _pendTimer=setTimeout(()=>{
     var el=$("pend_lista");
     if(el) el.innerHTML=buildPendCards(v);
-    else render();
   },200);
 }
 function buildPendCards(q){
   var tipoBg={cobro:CR,visita:CB,acuerdo:CG,jefe:CP,otro:"#64748B"};
   var tipoLabel={cobro:"💰 Cobro",visita:"📍 Visita",acuerdo:"🤝 Acuerdo",jefe:"👔 Jefe",otro:"📝 Otro"};
-  var tipoOrd={cobro:0,visita:1,acuerdo:2,jefe:3,otro:4};
-  var active=ST.pendientes.filter(p=>!p.completado).sort((a,b)=>{
-    var av=fechaPasada(a.fecha),bv=fechaPasada(b.fecha);
+  var sorted=ST.pendientes.slice().sort((a,b)=>{
+    var av=!a.completado&&fechaPasada(a.fecha);
+    var bv=!b.completado&&fechaPasada(b.fecha);
     if(av&&!bv)return-1;if(!av&&bv)return 1;
-    var to=(tipoOrd[a.tipo]??4)-(tipoOrd[b.tipo]??4);
-    if(to!==0)return to;
-    return skF(a.fecha).localeCompare(skF(b.fecha));
+    if(a.completado&&!b.completado)return 1;if(!a.completado&&b.completado)return-1;
+    return(b.fecha||"").localeCompare(a.fecha||"");
   });
-  var comps=ST.pendientes.filter(p=>p.completado).sort((a,b)=>skF(b.fechaCompletado||b.fecha).localeCompare(skF(a.fechaCompletado||a.fecha)));
-  var pends=active;
-  if(q){var ql=q.toLowerCase();
-    pends=pends.filter(p=>(p.descripcion||"").toLowerCase().includes(ql)||(p.tipo||"").toLowerCase().includes(ql));
-    comps=comps.filter(p=>(p.descripcion||"").toLowerCase().includes(ql)||(p.tipo||"").toLowerCase().includes(ql));
-  }
+  var pends=sorted.filter(p=>!p.completado);
+  var comps=sorted.filter(p=>p.completado);
+  if(q){var ql=q.toLowerCase();pends=pends.filter(p=>(p.descripcion||"").toLowerCase().includes(ql)||(p.tipo||"").toLowerCase().includes(ql));}
   var out="";
   if(!pends.length) out+=`<div style="text-align:center;padding:32px 20px;color:#94A3B8;font-size:15px;">🎉 Sin pendientes</div>`;
   out+=pends.map(p=>{
@@ -3925,7 +3391,6 @@ function buildPendCards(q){
           <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:5px;">
             <span style="background:${tipoBg[p.tipo]||"#64748B"};color:${CW};font-size:10px;
               font-weight:700;padding:2px 8px;border-radius:20px;">${tipoLabel[p.tipo]||p.tipo||""}</span>
-            ${(()=>{var pc={alta:CR,media:CA,baja:CG};var c2=pc[p.prioridad||"media"]||CA;return`<span style="background:${c2}22;color:${c2};font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;">${({alta:"Alta",media:"Media",baja:"Baja"})[p.prioridad||"media"]}</span>`;})()}
             ${vencido?`<span style="color:${CR};font-size:10px;font-weight:800;">VENCIDO</span>`:""}
             <span style="color:#94A3B8;font-size:11px;">${h(p.fecha||"")}</span>
             ${p.montoPendiente?`<span style="color:${CR};font-size:11px;font-weight:700;">${fmtM(p.montoPendiente)}</span>`:""}
@@ -3941,7 +3406,7 @@ function buildPendCards(q){
             ${(p.tipo==="cobro"||p.tipo==="acuerdo")?`<button onclick="setState({tab:'cobranza',searchCobro:'${h(c.nombre)}'})"
               style="background:#FFFBEB;border:1px solid ${CA};border-radius:6px;
               padding:2px 7px;color:${CA};font-size:10px;font-weight:700;cursor:pointer;">Ver cuenta</button>`:""}
-            ${deudaCliente>0.01?`<span style="background:#FEE2E2;color:${CR};font-size:10px;font-weight:800;padding:2px 8px;border-radius:20px;">💳 ${fmtM(deudaCliente)}</span>`:""}
+            ${deudaCliente>0.01?`<span style="color:${CR};font-size:11px;font-weight:700;">Debe ${fmtM(deudaCliente)}</span>`:""}
           </div>`:""}
         </div>
       </div>
@@ -3972,65 +3437,16 @@ function buildPendCards(q){
   return out;
 }
 function htmlPendientes(){
-  var vista=ST.vistaPendientes||"activos";
   var vencidos=ST.pendientes.filter(p=>!p.completado&&fechaPasada(p.fecha)).length;
   var q=ST.searchPend||"";
-  // Historial data
-  var resIcono={exitoso:"✅",nuevo_acuerdo:"🔄",volver_otro_dia:"↩️"};
-  var resLabel={exitoso:"Completado",nuevo_acuerdo:"Nuevo acuerdo",volver_otro_dia:"Volver otro día"};
-  var histPend=ST.pendientes.filter(p=>p.completado===true);
-  if(q){var ql=q.toLowerCase();histPend=histPend.filter(p=>(p.descripcion||"").toLowerCase().includes(ql)||(p.tipo||"").toLowerCase().includes(ql));}
-  histPend.sort((a,b)=>skF(b.fechaCompletado||b.fecha).localeCompare(skF(a.fechaCompletado||a.fecha)));
-  var tipoBgH={cobro:CR,visita:CB,acuerdo:CG,jefe:CP,otro:"#64748B"};
-  var tipoLabelH={cobro:"💰 Cobro",visita:"📍 Visita",acuerdo:"🤝 Acuerdo",jefe:"👔 Jefe",otro:"📝 Otro"};
-  var hoyStr=fmtF();
-  var hoy=ST.pendientes.filter(p=>!p.completado&&p.fecha===hoyStr).length;
-  var venc=ST.pendientes.filter(p=>!p.completado&&fechaPasada(p.fecha)).length;
   return`<div class="fade">${subHeader("Pendientes","📋")}
-  ${vistaToggle("vistaPendientes",vista)}
-  ${vista==="activos"?`<div style="display:flex;gap:8px;padding:10px 14px 4px;flex-wrap:wrap;">
-    ${hoy>0?`<span style="background:#DBEAFE;color:#1D4ED8;font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;">📅 Hoy: ${hoy}</span>`:""}
-    ${venc>0?`<span style="background:#FEE2E2;color:${CR};font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;">⚠️ Vencidos: ${venc}</span>`:""}
-    ${hoy===0&&venc===0?`<span style="background:#DCFCE7;color:${CG};font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;">✓ Al día</span>`:""}
-  </div>`:""}
   <div style="background:${CW};padding:10px 14px;border-bottom:1px solid #E2E8F0;">
     <div style="position:relative;">
       <span style="position:absolute;left:11px;top:50%;transform:translateY(-50%);font-size:13px;">🔍</span>
       <input id="s_pend" type="text" placeholder="Buscar pendiente..." value="${h(q)}" oninput="debPend(this.value)"
-        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
         style="width:100%;border:2px solid #E2E8F0;border-radius:10px;padding:9px 12px 9px 33px;font-size:13px;outline:none;"/>
     </div>
   </div>
-  ${vista==="historial"?`
-  <div style="padding:14px 14px 80px;">
-    ${histPend.length===0?`<div style="text-align:center;padding:40px 20px;color:#94A3B8;">Sin pendientes completados</div>`:""}
-    ${histPend.map(p=>{
-      var c=p.clienteId?ST.clientes.find(x=>x.id===p.clienteId):null;
-      var res=p.resultadoCompletado||"exitoso";
-      return`<div style="background:${CW};border-radius:12px;padding:12px;margin-bottom:7px;
-        box-shadow:0 1px 3px rgba(0,0,0,0.06);border-left:4px solid ${tipoBgH[p.tipo]||"#CBD5E1"};">
-        <div style="display:flex;align-items:flex-start;gap:10px;">
-          <span style="font-size:20px;flex-shrink:0;">${resIcono[res]||"✅"}</span>
-          <div style="flex:1;min-width:0;">
-            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px;">
-              <span style="background:${tipoBgH[p.tipo]||"#64748B"};color:${CW};font-size:10px;
-                font-weight:700;padding:2px 8px;border-radius:20px;">${tipoLabelH[p.tipo]||p.tipo||""}</span>
-              <span style="font-size:10px;font-weight:700;color:#64748B;">${resLabel[res]||res}</span>
-            </div>
-            <div style="font-size:13px;font-weight:600;color:${CN};line-height:1.3;">${h(p.descripcion||"")}</div>
-            ${c?`<div style="font-size:11px;color:${CB};margin-top:3px;">👤 ${h(c.nombre)}</div>`:""}
-            <div style="font-size:11px;color:#94A3B8;margin-top:3px;">
-              📅 ${h(p.fecha||"")}${p.fechaCompletado?" · ✓ "+h(p.fechaCompletado):""}
-            </div>
-          </div>
-          <button onclick="reactivarPendiente('${p.id}')"
-            style="background:#FFFBEB;border:1px solid ${CA};border-radius:7px;padding:4px 8px;
-            color:${CA};font-size:10px;font-weight:700;cursor:pointer;flex-shrink:0;">↩</button>
-        </div>
-      </div>`;
-    }).join("")}
-  </div>
-  `:`
   <div style="padding:14px 14px 80px;">
     ${vencidos>0?`<div style="background:#FEF2F2;border:2px solid ${CR};border-radius:12px;padding:11px 14px;
       margin-bottom:12px;font-size:13px;font-weight:700;color:${CR};">
@@ -4039,102 +3455,18 @@ function htmlPendientes(){
       style="width:100%;background:${CN};border:none;border-radius:13px;padding:13px;
       color:${CW};font-size:15px;font-weight:700;cursor:pointer;margin-bottom:14px;">+ Nuevo Pendiente</button>
     <div id="pend_lista">${buildPendCards(q)}</div>
-  </div>
-  `}
-  </div>`;
+  </div></div>`;
 }
 
-function completarPendiente(id){
-  var pend=ST.pendientes.find(p=>p.id===id);
-  if(!pend) return;
-  setState({modal:{tipo:"completarPendiente",pend}});
-}
-function mCompletarPendiente(pend){
-  if(!pend) return`${mHeader("¿Qué pasó?")}<p style="color:#94A3B8;">Pendiente no encontrado.</p>`;
-  var cli=pend.clienteId?ST.clientes.find(x=>x.id===pend.clienteId):null;
-  return`${mHeader("¿Qué pasó?")}
-  <div style="background:#F8FAFC;border-radius:11px;padding:12px;margin-bottom:16px;">
-    <div style="font-size:14px;font-weight:700;color:${CN};">${h(pend.descripcion||"")}</div>
-    ${cli?`<div style="font-size:12px;color:#64748B;margin-top:3px;">👤 ${h(cli.nombre)}</div>`:""}
-    <div style="font-size:11px;color:#94A3B8;margin-top:3px;">${h(pend.fecha||"")}</div>
-  </div>
-  <div style="display:flex;flex-direction:column;gap:8px;">
-    <button onclick="procesarCompletarPend('${pend.id}','exitoso')"
-      style="width:100%;padding:14px;border-radius:12px;border:2px solid ${CG};
-      background:#F0FDF4;color:${CG};font-weight:700;font-size:14px;cursor:pointer;text-align:left;">
-      ✅ Completado exitosamente</button>
-    <button onclick="mostrarFechaPend('acuerdo')"
-      style="width:100%;padding:14px;border-radius:12px;border:2px solid ${CB};
-      background:#EFF6FF;color:${CB};font-weight:700;font-size:14px;cursor:pointer;text-align:left;">
-      🔄 Nuevo acuerdo</button>
-    <button onclick="mostrarFechaPend('volver')"
-      style="width:100%;padding:14px;border-radius:12px;border:2px solid ${CA};
-      background:#FFFBEB;color:${CA};font-weight:700;font-size:14px;cursor:pointer;text-align:left;">
-      ↩️ No estaba / Volver otro día</button>
-    <button onclick="setState({modal:null})"
-      style="width:100%;padding:13px;border-radius:12px;border:2px solid #E2E8F0;
-      background:${CW};color:#64748B;font-weight:700;font-size:13px;cursor:pointer;text-align:left;">
-      ❌ Cancelar</button>
-  </div>
-  <div id="cpend_fecha_w" style="display:none;margin-top:14px;background:#F8FAFC;border-radius:12px;padding:14px;">
-    <input type="hidden" id="cpend_modo" value=""/>
-    <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:6px;">Nueva fecha</label>
-    <input id="cpend_fecha" type="date" value="${new Date().toISOString().split("T")[0]}"
-      style="width:100%;border:2px solid #E2E8F0;border-radius:9px;padding:11px;font-size:15px;outline:none;margin-bottom:10px;"/>
-    <button onclick="confirmarFechaPend('${pend.id}')"
-      style="width:100%;background:${CN};border:none;border-radius:10px;padding:12px;
-      color:${CW};font-size:14px;font-weight:700;cursor:pointer;">✓ Confirmar</button>
-  </div>`;
-}
-function mostrarFechaPend(modo){
-  var w=$("cpend_fecha_w"),hid=$("cpend_modo");
-  if(w) w.style.display="block";
-  if(hid) hid.value=modo;
-  var f=$("cpend_fecha");if(f){f.focus();}
-}
-async function procesarCompletarPend(id,resultado){
+async function completarPendiente(id){
+  if(!confirm("¿Marcar como completado?")) return;
   try{
-    await db.collection("pendientes").doc(id).update({
-      completado:true,fechaCompletado:fmtF(),resultadoCompletado:resultado,
-      ts:firebase.firestore.FieldValue.serverTimestamp()
-    });
+    await db.collection("pendientes").doc(id).update({completado:true,fechaCompletado:fmtF()});
     var idx=ST.pendientes.findIndex(p=>p.id===id);
-    if(idx>=0){ST.pendientes[idx].completado=true;ST.pendientes[idx].fechaCompletado=fmtF();
-      ST.pendientes[idx].resultadoCompletado=resultado;}
-    toast("✅ Completado exitosamente",CG);setState({modal:null});
+    if(idx>=0){ST.pendientes[idx].completado=true;ST.pendientes[idx].fechaCompletado=fmtF();}
+    toast("✓ Completado",CG);render();
   }catch(e){toast("Error: "+e.message,CR);}
 }
-async function confirmarFechaPend(id){
-  var modo=$("cpend_modo")?.value||"volver";
-  var fechaRaw=$("cpend_fecha")?.value;
-  if(!fechaRaw){toast("Seleccioná una fecha",CR);return;}
-  var pts=fechaRaw.split("-");
-  var fechaFmt=pts[2]+"/"+pts[1]+"/"+pts[0];
-  var pend=ST.pendientes.find(p=>p.id===id);
-  if(!pend) return;
-  var descNueva=modo==="acuerdo"
-    ?"🔄 Nuevo acuerdo: "+pend.descripcion
-    :"↩️ Revisitar: "+pend.descripcion;
-  try{
-    await db.collection("pendientes").doc(id).update({
-      completado:true,fechaCompletado:fmtF(),
-      resultadoCompletado:modo==="acuerdo"?"nuevo_acuerdo":"volver_otro_dia",
-      ts:firebase.firestore.FieldValue.serverTimestamp()
-    });
-    var idx=ST.pendientes.findIndex(p=>p.id===id);
-    if(idx>=0){ST.pendientes[idx].completado=true;
-      ST.pendientes[idx].resultadoCompletado=modo==="acuerdo"?"nuevo_acuerdo":"volver_otro_dia";}
-    var pData={tipo:pend.tipo||"otro",descripcion:descNueva,clienteId:pend.clienteId||"",
-      fecha:fechaFmt,completado:false,vendedor:ST.perfil?.nombre||"",
-      ts:firebase.firestore.FieldValue.serverTimestamp()};
-    var ref=await db.collection("pendientes").add(pData);
-    var {ts:_tsB,...pDataLocal2}=pData;
-    ST.pendientes.unshift({id:ref.id,...pDataLocal2});
-    toast(modo==="acuerdo"?"🔄 Nuevo acuerdo para "+fechaFmt:"↩️ Reagendado para "+fechaFmt,CG);
-    setState({modal:null});
-  }catch(e){toast("Error: "+e.message,CR);}
-}
-
 async function reactivarPendiente(id){
   if(!confirm("¿Reactivar este pendiente?")) return;
   try{
@@ -4169,16 +3501,6 @@ function mNuevoPendiente(){
     <input id="pend_fecha" type="date" value="${new Date().toISOString().split("T")[0]}"
       style="width:100%;border:2px solid #E2E8F0;border-radius:11px;padding:12px;font-size:14px;outline:none;"/>
   </div>
-  <div style="margin-bottom:12px;">
-    <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:6px;">Prioridad</label>
-    <div style="display:flex;gap:8px;">
-      ${[["alta","🔴 Alta",CR],["media","🟡 Media",CA],["baja","🟢 Baja",CG]].map(([v,l,c],i)=>`<button type="button" onclick="selPriorPend(this,'${v}')" data-prior="${v}"
-        style="flex:1;padding:8px 4px;border-radius:20px;border:2px solid ${i===1?c:"#E2E8F0"};
-        background:${i===1?c:CW};color:${i===1?CW:"#64748B"};
-        font-size:12px;font-weight:700;cursor:pointer;">${l}</button>`).join("")}
-    </div>
-    <input type="hidden" id="pend_prior" value="media"/>
-  </div>
   <div style="margin-bottom:16px;">
     <label style="font-size:13px;font-weight:700;color:${CN};display:block;margin-bottom:5px;">Cliente (opcional)</label>
     <div style="position:relative;">
@@ -4199,10 +3521,7 @@ function mNuevoPendiente(){
   </div>
   <button onclick="guardarPendiente()"
     style="width:100%;background:${CG};border:none;border-radius:13px;padding:14px;
-    color:${CW};font-size:16px;font-weight:700;cursor:pointer;margin-bottom:8px;">✓ Guardar</button>
-  <button onclick="setState({modal:null})"
-    style="width:100%;background:none;border:2px solid #E2E8F0;border-radius:13px;padding:12px;
-    color:#64748B;font-size:14px;font-weight:600;cursor:pointer;">Cancelar</button>`;
+    color:${CW};font-size:16px;font-weight:700;cursor:pointer;">✓ Guardar</button>`;
 }
 
 function selTipoPend(btn,tipo){
@@ -4211,17 +3530,9 @@ function selTipoPend(btn,tipo){
     b.style.background=CW;b.style.color="#64748B";b.style.borderColor="#E2E8F0";
   });
   btn.style.background=CN;btn.style.color=CW;btn.style.borderColor=CN;
+  // Show/hide monto field
   var mw=$("pend_monto_w");
   if(mw) mw.style.display=(tipo==="cobro"||tipo==="acuerdo")?"block":"none";
-}
-function selPriorPend(btn,v){
-  var colores={alta:CR,media:CA,baja:CG};
-  $("pend_prior").value=v;
-  document.querySelectorAll("[data-prior]").forEach(b=>{
-    b.style.background=CW;b.style.color="#64748B";b.style.borderColor="#E2E8F0";
-  });
-  var c=colores[v]||CA;
-  btn.style.background=c;btn.style.color=CW;btn.style.borderColor=c;
 }
 
 async function guardarPendiente(){
@@ -4233,36 +3544,14 @@ async function guardarPendiente(){
   var montoRaw=val("pend_monto");
   var montoPendiente=montoRaw?parseFloat(montoRaw):null;
   var data={tipo:val("pend_tipo")||"otro",descripcion:desc,
-    prioridad:val("pend_prior")||"media",
     clienteId:val("pend_cliente")||"",fecha,completado:false,
     vendedor:ST.perfil?.nombre||"",ts:firebase.firestore.FieldValue.serverTimestamp()};
   if(montoPendiente&&montoPendiente>0) data.montoPendiente=montoPendiente;
   try{
     var ref=await db.collection("pendientes").add(data);
-    var {ts:_tsC,...dataLocal}=data;
-    ST.pendientes.unshift({id:ref.id,...dataLocal});
+    ST.pendientes.unshift({id:ref.id,...data});
     toast("✓ Pendiente guardado",CG);setState({modal:null});
   }catch(e){toast("Error: "+e.message,CR);}
-}
-function filtrarCliDev(v){
-  var list=$("dv_cli_list");
-  if(!list)return;
-  if(!v){list.style.display="none";return;}
-  var q=v.toLowerCase();
-  var matches=ST.clientes.filter(c=>(c.nombre||"").toLowerCase().includes(q)||(c.encargado||"").toLowerCase().includes(q)).slice(0,8);
-  if(!matches.length){list.style.display="none";return;}
-  list.style.display="block";
-  list.innerHTML=matches.map(c=>`<div data-nombre="${h(c.nombre)}" onclick="selCliDev(this.dataset.nombre)"
-    style="padding:10px 12px;cursor:pointer;border-bottom:1px solid #F1F5F9;font-size:13px;color:#0F2240;font-weight:600;"
-    onmouseover="this.style.background='#F1F5F9'" onmouseout="this.style.background=''">
-    ${h(c.nombre)}${c.encargado?`<span style="color:#94A3B8;font-weight:400;font-size:11px;"> · ${h(c.encargado)}</span>`:""}
-  </div>`).join("");
-}
-function selCliDev(nombre){
-  var inp=$("dv_cli");
-  var list=$("dv_cli_list");
-  if(inp) inp.value=nombre;
-  if(list) list.style.display="none";
 }
 function filtrarCliPend(v){
   var list=$("pend_cli_list");
@@ -4320,7 +3609,8 @@ function mFichaCliente(c){
   var limiteAlc=c.limiteCred&&deuda>=c.limiteCred;
 
   return`${mHeader(h(c.nombre))}
-  <div style="font-size:11px;color:#64748B;margin-top:-10px;margin-bottom:14px;">${h(c.encargado||"")}${c.zona?" · "+h(c.zona):""}${c.tel?" · 📞 "+h(c.tel):""}${c.tel2?" · 📞 "+h(c.tel2):""}${c.diaCobro?" · 💰 Cobro: "+h(c.diaCobro):""}${c.cedula?" · CI: "+h(c.cedula):""}</div>
+  <div style="font-size:11px;color:#64748B;margin-top:-10px;margin-bottom:14px;">
+    ${h(c.encargado||"")}${c.zona?" · "+h(c.zona):""}${c.tel?` · 📞 ${h(c.tel)}`:""}</div>
 
   <!-- 3 stats rápidos -->
   <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px;">
@@ -4378,14 +3668,6 @@ function mFichaCliente(c){
     border-radius:0 10px 10px 0;padding:10px 12px;margin-bottom:10px;">
     <div style="font-size:10px;font-weight:800;color:${CB};margin-bottom:4px;">💬 CONDICIONES</div>
     <div style="font-size:12px;color:${CN};">${h(c.condicionesPago)}</div>
-  </div>`:""}
-  ${c.notasInternas?`<div style="background:#FFFBEB;border-left:3px solid ${CA};
-    border-radius:0 10px 10px 0;padding:10px 12px;margin-bottom:10px;">
-    <div style="font-size:10px;font-weight:800;color:${CA};margin-bottom:4px;">📝 NOTAS INTERNAS</div>
-    <div style="font-size:12px;color:${CN};white-space:pre-wrap;">${h(c.notasInternas)}</div>
-  </div>`:""}
-  ${c.fotoLocal?`<div style="margin-bottom:10px;border-radius:12px;overflow:hidden;">
-    <img src="${h(c.fotoLocal)}" style="width:100%;max-height:180px;object-fit:cover;display:block;"/>
   </div>`:""}
 
   <!-- Estadísticas compactas -->
@@ -4582,17 +3864,6 @@ ${(cfg.categoriasPersonalizadas||CATS).join("\n")}</textarea>
     </div>
 
     <div style="background:${CW};border-radius:14px;padding:16px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
-      <div style="font-size:13px;font-weight:700;color:${CN};margin-bottom:8px;">💸 Categorías de gastos</div>
-      <div style="font-size:11px;color:#64748B;margin-bottom:8px;">Una categoría por línea:</div>
-      <textarea id="cfg_cats_gastos" rows="4" placeholder="Combustible\nAlimentación..."
-        style="width:100%;border:2px solid #E2E8F0;border-radius:10px;padding:10px;font-size:13px;outline:none;resize:none;font-family:monospace;">
-${(cfg.categoriasGastos||CATS_GASTOS).join("\n")}</textarea>
-      <button onclick="guardarCatsGastos()"
-        style="width:100%;background:${CN};border:none;border-radius:10px;padding:11px;margin-top:8px;
-        color:${CW};font-weight:700;cursor:pointer;font-size:13px;">✓ Guardar categorías de gastos</button>
-    </div>
-
-    <div style="background:${CW};border-radius:14px;padding:16px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
       <div style="font-size:13px;font-weight:700;color:${CN};margin-bottom:12px;">📊 Exportar Datos</div>
       <button onclick="exportarExcel()"
         style="width:100%;background:#16A34A;border:none;border-radius:11px;padding:13px;
@@ -4604,26 +3875,7 @@ ${(cfg.categoriasGastos||CATS_GASTOS).join("\n")}</textarea>
         style="width:100%;background:#F1F5F9;border:1px solid #E2E8F0;border-radius:11px;padding:11px;
         color:#64748B;font-weight:700;cursor:pointer;font-size:13px;margin-bottom:4px;">
         📦 Backup completo (JSON)</button>
-      <div style="font-size:11px;color:#94A3B8;text-align:center;margin-bottom:12px;">Para restaurar datos en otro dispositivo.</div>
-      <label style="width:100%;display:block;cursor:pointer;">
-        <div style="width:100%;background:#F1F5F9;border:1px solid #E2E8F0;border-radius:11px;padding:11px;
-          color:#64748B;font-weight:700;font-size:13px;text-align:center;margin-bottom:4px;">
-          ♻️ Restaurar desde JSON</div>
-        <input type="file" accept=".json" onchange="restaurarJSON(event)" style="display:none;"/>
-      </label>
-      <div style="font-size:11px;color:#94A3B8;text-align:center;margin-bottom:8px;">Importa un backup previamente exportado.</div>
-    </div>
-
-    <div style="background:${CW};border-radius:14px;padding:16px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
-      <div style="font-size:13px;font-weight:700;color:${CN};margin-bottom:8px;">📥 Importar Catálogo</div>
-      <div style="font-size:11px;color:#64748B;margin-bottom:8px;">Columnas requeridas: nombre, precioA, precioB, precioC (opcional: codigo, categoria, sistema, costo, precioD)</div>
-      <label style="width:100%;display:block;cursor:pointer;">
-        <div style="width:100%;background:${CN};border:none;border-radius:11px;padding:13px;
-          color:${CW};font-weight:700;font-size:14px;text-align:center;">
-          📂 Subir Excel o CSV</div>
-        <input type="file" accept=".xlsx,.csv" onchange="importarCatalogo(event)" style="display:none;"/>
-      </label>
-      <div id="imp_cat_res" style="margin-top:8px;font-size:12px;color:#64748B;"></div>
+      <div style="font-size:11px;color:#94A3B8;text-align:center;">Para restaurar datos en otro dispositivo.</div>
     </div>
 
     <div style="background:#FEF2F2;border:2px solid #FECACA;border-radius:14px;padding:16px;">
@@ -4682,98 +3934,9 @@ function guardarCats(){
   CATS=cats;
   toast("✓ Categorías guardadas",CG);render();
 }
-function guardarCatsGastos(){
-  var raw=($("cfg_cats_gastos")?.value||"").trim();
-  if(!raw){toast("Ingresá al menos una categoría",CR);return;}
-  var cats=raw.split("\n").map(c=>c.trim()).filter(c=>c.length>0);
-  saveConfig({categoriasGastos:cats});
-  CATS_GASTOS=cats;
-  toast("✓ Categorías de gastos guardadas",CG);render();
-}
 function cerrarSesionForzado(){
   if(!confirm("¿Cerrar sesión ahora?")) return;
   firebase.auth().signOut().then(()=>{window.location.reload();}).catch(e=>{toast("Error: "+e.message,CR);});
-}
-
-async function restaurarJSON(event){
-  var file=event.target.files&&event.target.files[0];
-  if(!file)return;
-  if(!confirm("¿Restaurar backup? Esto sobreescribirá datos en Firestore. Esta acción no se puede deshacer."))return;
-  try{
-    var text=await new Promise((res,rej)=>{var r=new FileReader();r.onload=e=>res(e.target.result);r.onerror=rej;r.readAsText(file);});
-    var data=JSON.parse(text);
-    var batch=db.batch();
-    var count=0;
-    var write=async(col,arr,keyFn)=>{
-      if(!Array.isArray(arr))return;
-      for(var item of arr){
-        var id=item.id||keyFn&&keyFn(item);
-        if(!id)continue;
-        var {id:_id,ts:_ts,...rest}=item;
-        batch.set(db.collection(col).doc(id),rest,{merge:true});
-        count++;
-        if(count%450===0){await batch.commit();batch=db.batch();}
-      }
-    };
-    await write("clientes",data.clientes);
-    await write("pedidos",data.pedidos);
-    await write("catalogo",data.catalogo);
-    await write("prospectos",data.prospectos);
-    await write("gastos",data.gastos);
-    await write("devoluciones",data.devoluciones);
-    await write("pendientes",data.pendientes);
-    await batch.commit();
-    toast("✓ Restaurado — "+count+" documentos. Recargando...",CG,4000);
-    setTimeout(()=>window.location.reload(),3000);
-  }catch(e){toast("Error al restaurar: "+e.message,CR,7000);}
-}
-
-async function importarCatalogo(event){
-  var file=event.target.files&&event.target.files[0];
-  if(!file)return;
-  var res=$("imp_cat_res")||$("imp_cat_res2");
-  if(res)res.innerHTML="⏳ Procesando...";
-  try{
-    if(typeof XLSX==="undefined"){toast("Librería Excel no cargada",CR);return;}
-    var ab=await new Promise((resolve,reject)=>{var r=new FileReader();r.onload=e=>resolve(e.target.result);r.onerror=reject;r.readAsArrayBuffer(file);});
-    var wb=XLSX.read(ab,{type:"arraybuffer"});
-    var ws=wb.Sheets[wb.SheetNames[0]];
-    var rows=XLSX.utils.sheet_to_json(ws,{defval:""});
-    if(!rows.length){toast("El archivo está vacío",CR);return;}
-    var ok=0,err=0;
-    var batch=db.batch();
-    var count=0;
-    for(var row of rows){
-      var nombre=(row.nombre||row.Nombre||"").toString().trim();
-      if(!nombre){err++;continue;}
-      var prod={
-        nombre,
-        codigo:(row.codigo||row.Codigo||row.Código||"").toString().trim(),
-        categoria:(row.categoria||row.Categoria||row.Categoría||"").toString().trim()||"General",
-        sistema:(row.sistema||row.Sistema||"Perseo").toString().trim()||"Perseo",
-        precioA:parseFloat(row.precioA||row.PrecioA||row.precio_a||0)||0,
-        precioB:parseFloat(row.precioB||row.PrecioB||row.precio_b||0)||0,
-        precioC:parseFloat(row.precioC||row.PrecioC||row.precio_c||0)||0,
-        precioD:parseFloat(row.precioD||row.PrecioD||row.precio_d||0)||0,
-        costo:parseFloat(row.costo||row.Costo||0)||0,
-        disponible:"Disponible"
-      };
-      var ref=db.collection("catalogo").doc();
-      batch.set(ref,prod);
-      ok++;count++;
-      if(count%400===0){await batch.commit();batch=db.batch();}
-    }
-    await batch.commit();
-    if(res)res.innerHTML=`✅ ${ok} productos importados${err?" · ⚠️ "+err+" filas sin nombre":""}.`;
-    toast("✓ "+ok+" productos importados al catálogo",CG,5000);
-    var snap=await db.collection("catalogo").get();
-    ST.catalogo=snap.docs.map(d=>({id:d.id,...d.data()}));
-    event.target.value="";
-    render();
-  }catch(e){
-    if(res)res.innerHTML="❌ Error: "+e.message;
-    toast("Error al importar: "+e.message,CR,7000);
-  }
 }
 
 function exportarJSON(){
@@ -4811,7 +3974,7 @@ function exportarExcel(){
       Nota:"#"+String(p.numeroNota||0).padStart(3,"0"),
       Cliente:p.cliente||"",
       Sistema:p.sistema||"",
-      "Forma Pago":p.formaPago||p.formaCobro||"",
+      "Forma Pago":p.formaPago||"",
       "Total c/IVA":fmtN(p.montoConIVA||p.monto),
       "Sin IVA":fmtN((p.montoConIVA||p.monto)/1.15),
       "Saldo Pend.":fmtN(p.saldoPendiente),
@@ -4862,13 +4025,22 @@ function exportarExcel(){
 
     // Hoja 5: Devoluciones
     if(ST.devoluciones.length){
-      var wsDev=XLSX.utils.json_to_sheet(ST.devoluciones.map(d=>({
-        Fecha:d.fecha||"",
-        Cliente:d.cliente||"",
-        Motivo:d.motivo||"",
-        Monto:fmtN(d.monto),
-        Notas:d.notas||""
-      })));
+      var wsDev=XLSX.utils.json_to_sheet(ST.devoluciones.map(d=>{
+        var pedVin=d.pedidoId?ST.pedidos.find(x=>x.id===d.pedidoId):null;
+        return{
+          Fecha:d.fecha||"",
+          Cliente:d.cliente||"",
+          Producto:d.producto||"",
+          Cantidad:d.cantidad||1,
+          Motivo:d.motivo||"",
+          Estado:d.estado||"pendiente",
+          Monto:fmtN(d.monto),
+          Reemplazo:d.reemplazoNombre||"",
+          "Val. Reemplazo":fmtN(d.reemplazoValor),
+          "Pedido Vinculado":pedVin?fmtNota(pedVin.numeroNota):"",
+          Notas:d.notas||""
+        };
+      }));
       XLSX.utils.book_append_sheet(wb,wsDev,"Devoluciones");
     }
 
@@ -4890,21 +4062,19 @@ function abrirCierreDia(){setState({modal:{tipo:"cierreDia"}});}
 
 function mCierreDia(){
   var hoyStr=fmtF();
-  var pedidosHoy=ST.pedidos.filter(p=>p.fecha===hoyStr&&p.estado!=="cancelado");
+  var pedidosHoy=ST.pedidos.filter(p=>p.fecha===hoyStr&&p.estado!=="cancelado"&&p.estado!=="tomado");
   var ventasHoy=pedidosHoy.reduce((s,p)=>s+(p.montoConIVA||p.monto||0),0);
   var cobradoHoy=ST.pedidos.filter(p=>p.fechaCobro===hoyStr).reduce((s,p)=>s+(p.montoCobrado||0),0);
   var gastosHoy=ST.gastos.filter(g=>g.fecha===hoyStr).reduce((s,g)=>s+(g.monto||0),0);
-  var utilidad=ventasHoy-gastosHoy;
+  var utilidad=ventasHoy+cobradoHoy-gastosHoy;
   var clientesUnicos=new Set(pedidosHoy.map(p=>p.clienteId).filter(Boolean)).size;
-  var entregasPend=ST.pedidos.filter(p=>p.estado==="despachado").length;
   var filas=[
     ["🏪 Clientes visitados",String(clientesUnicos)],
     ["📋 Notas de venta",String(pedidosHoy.length)],
     ["💰 Total vendido",fmtM(ventasHoy)],
     ["💵 Total cobrado",fmtM(cobradoHoy)],
     ["💸 Gastos del día",fmtM(gastosHoy)],
-    ["✨ Utilidad estimada",fmtM(utilidad)],
-    ["🚚 Entregas pendientes",String(entregasPend)]
+    ["✨ Utilidad estimada",fmtM(utilidad)]
   ];
   var nombre=getNombre();
   return`${mHeader("Cierre del Día — "+hoyStr)}
@@ -4929,22 +4099,20 @@ function mCierreDia(){
 
 function compartirCierreDiaWA(){
   var hoyStr=fmtF();
-  var pedidosHoy=ST.pedidos.filter(p=>p.fecha===hoyStr&&p.estado!=="cancelado");
+  var pedidosHoy=ST.pedidos.filter(p=>p.fecha===hoyStr&&p.estado!=="cancelado"&&p.estado!=="tomado");
   var ventasHoy=pedidosHoy.reduce((s,p)=>s+(p.montoConIVA||p.monto||0),0);
   var cobradoHoy=ST.pedidos.filter(p=>p.fechaCobro===hoyStr).reduce((s,p)=>s+(p.montoCobrado||0),0);
   var gastosHoy=ST.gastos.filter(g=>g.fecha===hoyStr).reduce((s,g)=>s+(g.monto||0),0);
-  var utilidad=ventasHoy-gastosHoy;
+  var utilidad=ventasHoy+cobradoHoy-gastosHoy;
   var clientesUnicos=new Set(pedidosHoy.map(p=>p.clienteId).filter(Boolean)).size;
   var nombre=getNombre();
-  var entregasPendWA=ST.pedidos.filter(p=>p.estado==="despachado").length;
   var msg="REPORTE DEL DÍA — "+hoyStr+"\nVendedor: "+nombre+
     "\n\nClientes visitados: "+clientesUnicos+
     "\nNotas de venta: "+pedidosHoy.length+
     "\nTotal vendido: "+fmtM(ventasHoy)+
     "\nTotal cobrado: "+fmtM(cobradoHoy)+
     "\nGastos: "+fmtM(gastosHoy)+
-    "\nUtilidad estimada: "+fmtM(utilidad)+
-    "\nEntregas pendientes: "+entregasPendWA;
+    "\nUtilidad estimada: "+fmtM(utilidad);
   window.open("https://wa.me/?text="+encodeURIComponent(msg),"_blank");
 }
 
@@ -4970,21 +4138,16 @@ function mNuevoClienteDesdeProspecto(pros){
 async function guardarClienteDesdeProspecto(prospectoId){
   var nombre=val("cl_nom");
   if(!nombre){toast("El nombre es obligatorio",CR);return;}
-  var notasInternas=val("cl_notas")||"";
-  var fotoLocal="";
-  var fotoInput=$("cl_foto");
-  if(fotoInput&&fotoInput.files&&fotoInput.files[0]){try{fotoLocal=await comprimirFoto(fotoInput.files[0]);}catch(e){}}
   var data={nombre,encargado:val("cl_enc"),tel:val("cl_tel"),tel2:val("cl_tel2")||"",
     cedula:val("cl_cedula")||"",ruc:val("cl_ruc"),sistema:val("cl_sistema")||"",
     dir:val("cl_dir"),zona:val("cl_zona")||"Centro",precio:val("cl_precio")||"C",
     ordenRuta:parseInt(val("cl_orden")||999),limiteCred:parseFloat(val("cl_lim")||0),
     condicionesPago:val("cl_cond"),diasVisita:JSON.parse(val("cl_dias")||"[]"),
-    diaCobro:val("cl_diaCobro")||"",notasInternas,fotoLocal,
+    diaCobro:val("cl_diaCobro")||"",
     estado:"activo",pendiente:0,monto:0,ts:firebase.firestore.FieldValue.serverTimestamp()};
   try{
     var ref=await db.collection("clientes").add(data);
-    var {ts:_tsCp,...dataLocalCp}=data;
-    ST.clientes.push({id:ref.id,...dataLocalCp});
+    ST.clientes.push({id:ref.id,...data});
     await db.collection("prospectos").doc(prospectoId).update({estado:"✅ Convertido"});
     var pi=ST.prospectos.findIndex(x=>x.id===prospectoId);
     if(pi>=0)ST.prospectos[pi].estado="✅ Convertido";
@@ -4996,26 +4159,28 @@ async function guardarClienteDesdeProspecto(prospectoId){
 // CARGA DE DATOS
 // ═══════════════════════════════════════════════════════════════════
 async function cargarTodo(){
-  try{
-    var snaps=await Promise.all([
-      db.collection("clientes").get(),
-      db.collection("pedidos").orderBy("ts","desc").limit(300).get(),
-      db.collection("catalogo").get(),
-      db.collection("usuarios").get(),
-      db.collection("prospectos").get(),
-      db.collection("gastos").orderBy("ts","desc").limit(100).get(),
-      db.collection("devoluciones").orderBy("ts","desc").limit(100).get(),
-      db.collection("pendientes").orderBy("ts","desc").limit(200).get()
-    ]);
-    ST.clientes    =snaps[0].docs.map(d=>({id:d.id,...d.data()}));
-    ST.pedidos     =snaps[1].docs.map(d=>({id:d.id,...d.data()}));
-    ST.catalogo    =snaps[2].docs.map(d=>({id:d.id,...d.data()}));
-    ST.usuarios    =snaps[3].docs.map(d=>({id:d.id,...d.data()}));
-    ST.prospectos  =snaps[4].docs.map(d=>({id:d.id,...d.data()}));
-    ST.gastos      =snaps[5].docs.map(d=>({id:d.id,...d.data()}));
-    ST.devoluciones=snaps[6].docs.map(d=>({id:d.id,...d.data()}));
-    ST.pendientes  =snaps[7].docs.map(d=>({id:d.id,...d.data()}));
-  }catch(e){console.error("Error cargando datos:",e);}
+  var load=async(fn)=>{try{return await fn();}catch(e){console.error("Error carga:",e);return null;}};
+  var [sClientes,sPedidos,sCatalogo,sUsuarios,sProspectos,sGastos,sDevs,sPends]=await Promise.all([
+    load(()=>db.collection("clientes").get()),
+    load(()=>db.collection("pedidos").orderBy("ts","desc").limit(300).get()),
+    load(()=>db.collection("catalogo").get()),
+    load(()=>db.collection("usuarios").get()),
+    load(()=>db.collection("prospectos").get()),
+    load(()=>db.collection("gastos").orderBy("ts","desc").limit(100).get()),
+    load(()=>db.collection("devoluciones").orderBy("ts","desc").limit(100).get()),
+    load(()=>db.collection("pendientes").orderBy("ts","desc").limit(200).get())
+  ]);
+  if(sClientes)    ST.clientes    =sClientes.docs.map(d=>({id:d.id,...d.data()}));
+  if(sPedidos)     ST.pedidos     =sPedidos.docs.map(d=>({id:d.id,...d.data()}));
+  if(sCatalogo)    ST.catalogo    =sCatalogo.docs.map(d=>({id:d.id,...d.data()}));
+  if(sUsuarios)    ST.usuarios    =sUsuarios.docs.map(d=>({id:d.id,...d.data()}));
+  if(sProspectos)  ST.prospectos  =sProspectos.docs.map(d=>({id:d.id,...d.data()}));
+  if(sGastos)      ST.gastos      =sGastos.docs.map(d=>({id:d.id,...d.data()}));
+  if(sDevs)        ST.devoluciones=sDevs.docs.map(d=>({id:d.id,...d.data()}));
+  if(sPends)       ST.pendientes  =sPends.docs.map(d=>({id:d.id,...d.data()}));
+  var fallos=[!sClientes&&"clientes",!sPedidos&&"pedidos",!sCatalogo&&"catálogo",
+    !sUsuarios&&"usuarios",!sGastos&&"gastos",!sDevs&&"devoluciones"].filter(Boolean);
+  if(fallos.length) toast("⚠️ Error cargando: "+fallos.join(", "),CA,6000);
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -5034,7 +4199,6 @@ auth.onAuthStateChanged(async function(user){
     var cfgInit=getConfig();
     if(cfgInit.zonasPersonalizadas&&cfgInit.zonasPersonalizadas.length) ZONAS=cfgInit.zonasPersonalizadas;
     if(cfgInit.categoriasPersonalizadas&&cfgInit.categoriasPersonalizadas.length) CATS=cfgInit.categoriasPersonalizadas;
-    if(cfgInit.categoriasGastos&&cfgInit.categoriasGastos.length) CATS_GASTOS=cfgInit.categoriasGastos;
     ST.loading=false;
     render();
   } else {
